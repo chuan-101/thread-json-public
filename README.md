@@ -1,2 +1,39 @@
-# echo-json-public
-Offline JSON analyzer for ChatGPT exports: word cloud, starters, catchphrases, model share, timeline.
+# Echo JSON (public)
+
+离线的 ChatGPT 导出 JSON 可视化小工具：上传导出的对话 JSON，**仅统计 Assistant（Syzygy）** 的文本，生成 **Top10 词云**、**Top5 常用开头句式**、**Top3 口癖模板**，并展示**近三个月模型使用占比**与**时间轴摘要**。全部在浏览器本地完成，不联网、不上传。
+
+## 特性
+- 竖向单页：顶部导入与外观（自定义标题、主题切换、停用词与脱敏），中部结果四卡，底部一键“保存为图片”。
+- 大文件友好：流式解析 + 分片入库（IndexedDB）+ WebWorker 并行。
+- 稳定准确：Misra–Gries + Count-Min Sketch 候选，精确回算保证 Top10 无偏。
+- 隐私最小化：默认仅 Assistant，支持轻度停用词过滤与可选脱敏。
+
+## 快速开始
+1. 在仓库根目录放置 `index.html`（已提供骨架）。
+2. 打开本地文件直接双击预览，或用任意静态服务器（可选）。
+3. 上传你的导出 JSON，等待进度条完成，即可查看四张结果卡片。
+4. 点击底部“保存为图片”导出当前结果区为长图。
+
+## GitHub Pages 发布
+Settings → Pages → Build and deployment：  
+- Source 选 “Deploy from a branch”  
+- Branch 选 `main`，Folder 选 `/ (root)`  
+提交后等待几分钟即可通过 Pages 链接访问。
+
+## 浏览器支持
+- 推荐：Chrome / Edge 最新稳定版。  
+- Safari 对大文件与截图库可能有限制。  
+- 移动端可浏览，但建议在桌面端生成结果与长图。
+
+## 数据与隐私
+- 文件只在本机解析，数据存于 IndexedDB；页面不进行任何网络上传。  
+- 可在界面开启“脱敏开关”，以词典替换敏感词再统计。  
+- 关闭页面即可清空内存态；IndexedDB 数据可在浏览器设置中删除。
+
+## 使用提示
+- JSON 很大时（百 MB 级），首次解析需要一定时间，进度条会分三段显示。  
+- 主题提供四套（Echo Cyan / Amber Sand / Orchid Plum / Forest Teal），后续可在代码里增减。  
+- “时间轴摘要”支持“全部消息 / 仅 Assistant”切换，累计天数按“含首尾”口径计算。  
+- 模型占比支持“滚动90天 / 日历三月”与“消息/字符/近似 token”三种口径切换。
+
+## 目录结构（最小集）
