@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="echo-cyan">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Echo：My GPT</title>
+  <!-- 可选：用于“一键保存为图片” -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
+  <style>
+    :root{
+      --radius:16px; --pad:16px; --gap:16px; --shadow:0 6px 18px rgba(0,0,0,.06);
+      --border:1px solid rgba(0,0,0,.08);
+      /* Echo Cyan */
+      --primary:#3AC3E0; --accent:#0FB7D1; --bg:#F6FBFD; --text:#0A0F14;
+      --cloud-grad-start:#3AC3E0; --cloud-grad-end:#0FB7D1;
+    }
+    /* 主题：Amber Sand */
+    html[data-theme="amber-sand"]{
+      --primary:#FFB74D; --accent:#FFA000; --bg:#FFF8E7; --text:#1A1207;
+      --cloud-grad-start:#FFB74D; --cloud-grad-end:#FFA000;
+    }
+    /* 主题：Orchid Plum */
+    html[data-theme="orchid-plum"]{
+      --primary:#B388FF; --accent:#8E44AD; --bg:#F9F7FF; --text:#120A1A;
+      --cloud-grad-start:#B388FF; --cloud-grad-end:#8E44AD;
+    }
+    /* 主题：Forest Teal */
+    html[data-theme="forest-teal"]{
+      --primary:#26A69A; --accent:#00796B; --bg:#F2FBFA; --text:#0A1412;
+      --cloud-grad-start:#26A69A; --cloud-grad-end:#00796B;
+    }
+
+    body{margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; color:var(--text); background:var(--bg);}
+    .wrap{max-width:980px; margin:0 auto; padding:24px;}
+    .h1{font-size:28px; font-weight:700; margin:0 0 8px;}
+    .muted{opacity:.65; font-size:14px;}
+    .card{background:#fff; border:var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:var(--pad);}
+    .stack{display:flex; flex-direction:column; gap:var(--gap);}
+    .row{display:flex; flex-wrap:wrap; gap:12px;}
+    .btn{appearance:none; border:0; border-radius:12px; padding:10px 14px; background:var(--primary); color:#fff; font-weight:600; cursor:pointer;}
+    .btn.secondary{background:#fff; color:var(--text); border:1px solid rgba(0,0,0,.1);}
+    .tag{display:inline-block; padding:4px 8px; border-radius:999px; background:rgba(0,0,0,.06);}
+    input[type="text"], textarea, select{
+      width:100%; padding:10px 12px; border-radius:10px; border:1px solid rgba(0,0,0,.12); background:#fff;
+    }
+    .progress{height:10px; background:rgba(0,0,0,.06); border-radius:999px; overflow:hidden;}
+    .bar{height:100%; width:0; background:linear-gradient(90deg,var(--primary),var(--accent)); transition:width .3s;}
+    .section-title{font-weight:700; margin:0 0 8px; border-left:4px solid var(--primary); padding-left:8px;}
+    .fold{border-top:1px dashed rgba(0,0,0,.08); margin-top:12px; padding-top:12px;}
+    .cloud{
+      min-height:220px; display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:12px;
+    }
+    .cloud span{
+      display:inline-block; padding:2px 4px; border-radius:6px;
+      background:linear-gradient(90deg,var(--cloud-grad-start),var(--cloud-grad-end));
+      -webkit-background-clip:text; background-clip:text; color:transparent; font-weight:800;
+    }
+    .small{font-size:12px; opacity:.7;}
+    .pill{display:inline-flex; gap:6px; align-items:center;}
+    .kpi{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px;}
+    .kpi .box{background:#fff; border:var(--border); border-radius:12px; padding:12px; text-align:center;}
+    .kpi .n{font-size:18px; font-weight:800;}
+    .hide{display:none;}
+    .footer{position:sticky; bottom:0; background:linear-gradient(to top, rgba(246,251,253,.95), rgba(246,251,253,0)); padding-top:8px;}
+  </style>
+</head>
+<body>
+  <div class="wrap stack">
+    <!-- 顶部：输入与外观 -->
+    <div class="card stack" id="top">
+      <div>
+        <div class="h1" id="title">Echo：<span id="title-name">My GPT</span></div>
+        <div class="muted">上传导出的对话 JSON，离线统计 Syzygy 的 Top10 词云 / Top5 开头句式 / Top3 口癖，并显示近三个月模型占比与时间轴摘要。</div>
+      </div>
+      <div class="stack">
+        <div class="row">
+          <input type="file" id="file" accept=".json,application/json" />
+          <button class="btn" id="btn-parse">开始解析</button>
+          <button class="btn secondary" id="btn-cancel">中断/重置</button>
+        </div>
+        <div class="row">
+          <div style="flex:2; min-width:260px;">
+            <label class="small">标题中“GPT”的替换词</label>
+            <input type="text" id="title-input" placeholder="例如：Syzygy 或 你的别名" />
+          </div>
+          <div style="flex:1; min-width:220px;">
+            <label class="small">主题选择</label>
+            <select id="theme">
+              <option value="echo-cyan">Echo Cyan</option>
+              <option value="amber-sand">Amber Sand</option>
+              <option value="orchid-plum">Orchid Plum</option>
+              <option value="forest-teal">Forest Teal</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div style="flex:2; min-width:260px;">
+            <label class="small">停用词（轻过滤，逗号或空格分隔）</label>
+            <input type="text" id="stopwords" placeholder="啊 的 了 你 我 我们 然后 就是 等…" />
+          </div>
+          <label class="pill"><input type="checkbox" id="mask" /> <span>脱敏开关</span></label>
+        </div>
+        <div class="stack">
+          <div><span class="small">解析进度</span>
+            <div class="progress"><div class="bar" id="p-parse"></div></div>
+          </div>
+          <div><span class="small">分片入库</span>
+            <div class="progress"><div class="bar" id="p-shard"></div></div>
+          </div>
+          <div><span class="small">统计计算</span>
+            <div class="progress"><div class="bar" id="p-stat"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 中部：结果区 -->
+    <div class="stack" id="results">
+      <!-- 时间轴摘要 -->
+      <div class="card stack" id="card-time">
+        <div class="section-title">时间轴摘要</div>
+        <div class="kpi">
+          <div class="box"><div class="small">起始日期</div><div class="n" id="start-date">—</div></div>
+          <div class="box"><div class="small">首条时间</div><div class="n" id="first-ts">—</div></div>
+          <div class="box"><div class="small">累计天数（含首尾）</div><div class="n" id="days">—</div></div>
+          <div class="box"><div class="small">跨度（可选）</div><div class="n" id="span">—</div></div>
+        </div>
+        <div class="row small">
+          <label class="pill"><input type="radio" name="scope" value="all" checked /> 全部消息</label>
+          <label class="pill"><input type="radio" name="scope" value="assistant" /> 仅 Assistant</label>
+          <span class="tag">时区：本地</span>
+        </div>
+      </div>
+
+      <!-- 词云 -->
+      <div class="card stack" id="card-cloud">
+        <div class="section-title">Top10 词云</div>
+        <div class="cloud" id="cloud">
+          <!-- 渲染示例 -->
+          <span style="font-size:36px;">Syzygy</span>
+          <span style="font-size:28px;">听话</span>
+          <span style="font-size:24px;">现在</span>
+          <span style="font-size:20px;">抱紧</span>
+        </div>
+        <div class="fold small" id="cloud-table" aria-hidden="true">
+          <!-- 可选的表格模式占位 -->
+        </div>
+      </div>
+
+      <!-- 开头句式 -->
+      <div class="card stack" id="card-starters">
+        <div class="section-title">Top5 常用开头句式</div>
+        <ol id="starters" class="stack">
+          <li>〈称呼〉，听话，…… <span class="tag">支持度 —</span></li>
+          <li>现在，…… <span class="tag">支持度 —</span></li>
+        </ol>
+      </div>
+
+      <!-- 口癖模板 -->
+      <div class="card stack" id="card-catch">
+        <div class="section-title">Top3 口癖模板</div>
+        <ol id="catchphrases" class="stack">
+          <li>〈命令式起手〉 + 〈称呼〉 + 〈动作〉 <span class="tag">支持度 —</span></li>
+        </ol>
+      </div>
+
+      <!-- 模型占比（近三个月） -->
+      <div class="card stack" id="card-models">
+        <div class="section-title">模型使用占比（近三个月）</div>
+        <div class="row small">
+          <select id="win"><option value="rolling">滚动90天</option><option value="calendar">日历三月</option></select>
+          <select id="metric"><option value="chars">字符占比</option><option value="msgs">消息数占比</option><option value="tokens">近似token占比</option></select>
+          <select id="view"><option value="family">家族视图</option><option value="model">具体型号</option></select>
+        </div>
+        <div id="models-chart" style="height:220px; display:flex; align-items:center; justify-content:center;">
+          <span class="muted">圆环图占位（后续接入渲染）</span>
+        </div>
+        <div id="models-table" class="fold small">
+          <!-- 表格占位：模型 | 消息 | 字符 | 占比 -->
+        </div>
+      </div>
+    </div>
+
+    <!-- 底部：轻导出 -->
+    <div class="footer">
+      <div class="card row" style="justify-content:space-between; align-items:center;">
+        <span class="small">当前主题与标题会同步用于导出长图。</span>
+        <button class="btn" id="btn-save">保存为图片</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // —— 主题切换（下拉） ——
+    const themeSel = document.getElementById('theme');
+    themeSel.addEventListener('change', () => {
+      document.documentElement.setAttribute('data-theme', themeSel.value);
+    });
+
+    // —— 标题替换（仅替换“GPT”段） ——
+    const titleInput = document.getElementById('title-input');
+    const titleName = document.getElementById('title-name');
+    titleInput.addEventListener('input', () => {
+      const v = (titleInput.value || 'My GPT').trim();
+      titleName.textContent = v;
+      document.title = `Echo：${v}`;
+    });
+
+    // —— 解析流程占位：接入流式解析与统计时更新三个进度条 ——
+    const p1 = document.getElementById('p-parse');
+    const p2 = document.getElementById('p-shard');
+    const p3 = document.getElementById('p-stat');
+    function setProgress(el, val){ el.style.width = Math.max(0, Math.min(100, val)) + '%'; }
+
+    // —— 文件选择与开始按钮（占位逻辑） ——
+    const fileInput = document.getElementById('file');
+    document.getElementById('btn-parse').addEventListener('click', () => {
+      if(!fileInput.files?.[0]) { alert('请选择 JSON 文件'); return; }
+      // TODO: 在此启动 File.stream()+TextDecoder 流式解析与分片 → WebWorker 统计
+      // 更新示例进度（临时演示，接入后移除）
+      setProgress(p1, 30); setProgress(p2, 10); setProgress(p3, 0);
+      setTimeout(()=>{ setProgress(p1, 100); setProgress(p2, 60); }, 500);
+      setTimeout(()=>{ setProgress(p2, 100); setProgress(p3, 100); }, 1200);
+    });
+    document.getElementById('btn-cancel').addEventListener('click', () => {
+      // TODO: 终止解析/worker，清理状态
+      setProgress(p1,0); setProgress(p2,0); setProgress(p3,0);
+    });
+
+    // —— 时间轴摘要占位：接入后填充起始日期/首条时间/累计天数 ——
+    function setTimeSummary({startDate, firstTs, days, span}){
+      document.getElementById('start-date').textContent = startDate || '—';
+      document.getElementById('first-ts').textContent = firstTs || '—';
+      document.getElementById('days').textContent = days ?? '—';
+      document.getElementById('span').textContent = span ?? '—';
+    }
+
+    // —— 保存为图片（仅截取结果区） ——
+    document.getElementById('btn-save').addEventListener('click', async () => {
+      const target = document.getElementById('results');
+      if (!window.html2canvas) { alert('无法使用内置导出，请手动截图'); return; }
+      const canvas = await html2canvas(target, {scale:2, useCORS:true, backgroundColor: getComputedStyle(document.body).backgroundColor});
+      const url = canvas.toDataURL('image/png');
+      const a = document.createElement('a'); a.href = url; a.download = `Echo-${titleName.textContent}.png`; a.click();
+    });
+
+    // —— 停用词与脱敏（存放到内存状态；统计阶段读取） ——
+    const state = { stopwords: new Set(), mask:false };
+    document.getElementById('stopwords').addEventListener('blur', e=>{
+      const raw = (e.target.value||'').replace(/[，、]/g, ' ').split(/\s+/).filter(Boolean);
+      state.stopwords = new Set(raw);
+    });
+    document.getElementById('mask').addEventListener('change', e=> state.mask = !!e.target.checked);
+
+    // —— 范围切换（全部/仅 Assistant）：统计完成后只切换视图，不二次全扫 ——
+    document.querySelectorAll('input[name="scope"]').forEach(r=>{
+      r.addEventListener('change', ()=>{ /* TODO: 切换 minTs/指标引用 */ });
+    });
+
+    // —— 示例：词云渲染函数占位（后续用真实 Top10 替换） ——
+    function renderCloud(words){
+      const host = document.getElementById('cloud'); host.innerHTML = '';
+      words.forEach((w,i)=>{
+        const el = document.createElement('span');
+        el.textContent = w.text;
+        el.style.fontSize = (14 + Math.round(26 * w.weight)) + 'px';
+        host.appendChild(el);
+      });
+    }
+    // renderCloud([{text:'Syzygy',weight:1},{text:'听话',weight:.8}]); // 接入后删除
+  </script>
+</body>
+</html>
