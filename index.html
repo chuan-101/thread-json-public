@@ -71,14 +71,26 @@
   -webkit-text-fill-color:var(--primary) !important;
   -webkit-background-clip:initial !important;
 }
-  :root{ --card-bg:#fff; --card-border-color: rgba(0,0,0,.10); }
-html[data-theme="echo-cyan"]  { --card-bg:#F0FAFD; --card-border-color: rgba(58,195,224,.25); }
-html[data-theme="amber-sand"] { --card-bg:#FFF3DC; --card-border-color: rgba(255,183,77,.28); }
-html[data-theme="orchid-plum"]{--card-bg:#F2ECFF; --card-border-color: rgba(179,136,255,.26); }
-html[data-theme="forest-teal"]{--card-bg:#E6F6F4; --card-border-color: rgba(38,166,154,.26); }
+/* —— 卡片无边框主题底色 —— */
+:root{ --card-bg:#fff; }
+html[data-theme="echo-cyan"]  { --card-bg:#F0FAFD; }
+html[data-theme="amber-sand"] { --card-bg:#FFF3E6; }
+html[data-theme="orchid-plum"]{--card-bg:#F2ECFF; }
+html[data-theme="forest-teal"]{--card-bg:#E6F6F4; }
 
-.card{ background: var(--card-bg); border:1px solid var(--card-border-color); }
-.printing .card{ background: var(--card-bg); box-shadow:none; border:1px solid rgba(0,0,0,.12); } /* 导出时用细描边防脏影 */
+/* 卡片完全无边框，保留柔和阴影；打印时去阴影防脏边 */
+.card{ background:var(--card-bg); border:none !important; box-shadow:0 6px 18px rgba(0,0,0,.06); border-radius:var(--radius); }
+.printing .card{ box-shadow:none !important; border:none !important; background:var(--card-bg); }
+
+/* KPI 小盒子也去边框，改为轻底色分隔 */
+.kpi .box{ background:var(--card-bg); border:none !important; box-shadow:0 1px 6px rgba(0,0,0,.05); }
+
+/* 结果区与卡片间距略放大，替代边框的视觉分隔 */
+#results > .card{ margin-bottom:16px; }
+
+/* 截图护栏（保留你已加的） */
+#printing-fix{}
+#printing-fix{} /* 占位，防与现有重复；无需改动之前的 .printing 规则 */
   </style>
 </head>
 <body>
