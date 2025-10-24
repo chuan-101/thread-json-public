@@ -62,9 +62,15 @@
     .kpi .n{font-size:18px; font-weight:800;}
     .hide{display:none;}
     .footer{position:sticky; bottom:0; background:linear-gradient(to top, rgba(246,251,253,.95), rgba(246,251,253,0)); padding-top:8px;}
-#results{ overflow: visible; }
-.printing .footer{ position: static; box-shadow: none; } 
-.printing .card{ box-shadow: none; border:1px solid rgba(0,0,0,.12); } 
+    .printing #results{ overflow: visible; }
+    .printing .footer{ position: static; box-shadow:none; }
+    .printing .card{ box-shadow:none; border:1px solid rgba(0,0,0,.12); }
+    .printing .cloud span{
+  background:none !important;
+  color:var(--primary) !important;
+  -webkit-text-fill-color:var(--primary) !important;
+  -webkit-background-clip:initial !important;
+}
   </style>
 </head>
 <body>
@@ -240,34 +246,35 @@
 
     // —— 保存为图片（仅截取结果区） ——
 document.getElementById('btn-save').addEventListener('click', async () => {
-  const page = document.documentElement;
-  const body = document.body;
-  const target = document.getElementById('results');
-
   if (!window.html2canvas) { alert('无法使用内置导出，请手动截图'); return; }
 
-  // 进入“打印模式”：去粘滞、去阴影，防裁切
-  page.classList.add('printing');
+  const root   = document.documentElement;
+  const body   = document.body;
+  const target = document.getElementById('results');
 
-  // 等待字体与布局稳定
+  // 进入打印模式：去 sticky/阴影，并切换词云为纯色文本
+  root.classList.add('printing');
+
   try {
     if (document.fonts && document.fonts.ready) { await document.fonts.ready; }
-    await new Promise(r => setTimeout(r, 50));
+    await new Promise(r => setTimeout(r, 50)); // 等布局稳定
   } catch(_) {}
 
-  // 用元素自身尺寸渲染，而不是视窗尺寸
-  const bg = getComputedStyle(body).backgroundColor;
-  const w = Math.max(target.scrollWidth, target.clientWidth);
-  const h = Math.max(target.scrollHeight, target.clientHeight);
+  const rect = target.getBoundingClientRect();
+  const w = Math.ceil(target.scrollWidth);
+  const h = Math.ceil(target.scrollHeight);
 
   const canvas = await html2canvas(target, {
     scale: 2,
     useCORS: true,
-    backgroundColor: bg,
-    windowWidth: w,
-    windowHeight: h,
+    backgroundColor: getComputedStyle(body).backgroundColor,
+    // 关键：用元素自身尺寸，而不是视窗
+    x: 0, y: 0, width: w, height: h,
+    windowWidth: Math.max(w, window.innerWidth),
+    windowHeight: h + rect.top,   // 把视窗下方内容也包含进来
     scrollX: 0,
-    scrollY: -window.scrollY
+    scrollY: -window.scrollY,
+    onclone: (doc) => { doc.documentElement.classList.add('printing'); }
   });
 
   const a = document.createElement('a');
@@ -275,8 +282,7 @@ document.getElementById('btn-save').addEventListener('click', async () => {
   a.download = `Echo-${document.getElementById('title-name').textContent}.png`;
   a.click();
 
-  // 退出“打印模式”
-  page.classList.remove('printing');
+  root.classList.remove('printing');
 });
 
     // —— 停用词与脱敏（存放到内存状态；统计阶段读取） ——
