@@ -11,23 +11,23 @@
       --radius:16px; --pad:16px; --gap:16px; --shadow:0 6px 18px rgba(0,0,0,.06);
       --border:1px solid rgba(0,0,0,.08);
       /* Echo Cyan */
-      --primary:#ada6b6; --accent:#e2d8e9; --bg:#f2f1f8; --text:#242424;
-      --cloud-grad:#a395c2; 
+      --primary:#d2c3a0; --accent:#81a7a5; --bg:#c2e2cf; --text:#242424;
+      --cloud-grad:#81a7a5; 
     }
     /* 主题：Amber Sand */
     html[data-theme="amber-sand"]{
-      --primary:#f4b4bf; --accent:#66a3a6; --bg:#a1ccdd; --text:#242424;
-      --cloud-grad:#66a3a6;
+      --primary:#e2d8e9; --accent:#ccbfe8; --bg:#c9c0dd; --text:#242424;
+      --cloud-grad:#ccbfe8;
     }
     /* 主题：Orchid Plum */
     html[data-theme="orchid-plum"]{
-      --primary:#efb0d0; --accent:#505050; --bg:#eeeaeb; --text:#242424;
-      --cloud-grad:#efb0d0;
+      --primary:#d7b56c; --accent:#af5249; --bg:#bfa98b; --text:#242424;
+      --cloud-grad:#af5249;
     }
     /* 主题：Forest Teal */
     html[data-theme="forest-teal"]{
-      --primary:#123930; --accent:#87906f; --bg:#111a19; --text:#242424;
-      --cloud-grad:#b66b3b;
+      --primary:#c2c2c2; --accent:#617ba2; --bg:#aac1b0; --text:#242424;
+      --cloud-grad:#617ba2;
     }
 
     body{margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; color:var(--text); background:var(--bg);}
@@ -73,10 +73,10 @@
 }
 /* —— 卡片无边框主题底色 —— */
 :root{ --card-bg:#fff; }
-html[data-theme="echo-cyan"]  { --card-bg:#e2d8e9; }
-html[data-theme="amber-sand"] { --card-bg:#eeeaeb; }
-html[data-theme="orchid-plum"]{--card-bg:#f4d0e2; }
-html[data-theme="forest-teal"]{--card-bg:#f6ecdb; }
+html[data-theme="echo-cyan"]  { --card-bg:#fbf9ec; }
+html[data-theme="amber-sand"] { --card-bg:#f4f4f4; }
+html[data-theme="orchid-plum"]{--card-bg:#e7e1d8; }
+html[data-theme="forest-teal"]{--card-bg:#f2eee1; }
 
 /* 卡片完全无边框，保留柔和阴影；打印时去阴影防脏边 */
 .card{ background:var(--card-bg); border:none !important; box-shadow:0 6px 18px rgba(0,0,0,.06); border-radius:var(--radius); }
