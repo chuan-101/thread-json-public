@@ -62,6 +62,9 @@
     .kpi .n{font-size:18px; font-weight:800;}
     .hide{display:none;}
     .footer{position:sticky; bottom:0; background:linear-gradient(to top, rgba(246,251,253,.95), rgba(246,251,253,0)); padding-top:8px;}
+#results{ overflow: visible; }
+.printing .footer{ position: static; box-shadow: none; } 
+.printing .card{ box-shadow: none; border:1px solid rgba(0,0,0,.12); } 
   </style>
 </head>
 <body>
@@ -236,23 +239,27 @@
     }
 
     // —— 保存为图片（仅截取结果区） ——
-    document.getElementById('btn-save').addEventListener('click', async () => {
+document.getElementById('btn-save').addEventListener('click', async () => {
   const page = document.documentElement;
   const body = document.body;
   const target = document.getElementById('results');
 
-  // 进入“打印模式”
+  if (!window.html2canvas) { alert('无法使用内置导出，请手动截图'); return; }
+
+  // 进入“打印模式”：去粘滞、去阴影，防裁切
   page.classList.add('printing');
 
-  // 确保字体与布局稳定
-  if (document.fonts && document.fonts.ready) { await document.fonts.ready; }
-  await new Promise(r => setTimeout(r, 50));
+  // 等待字体与布局稳定
+  try {
+    if (document.fonts && document.fonts.ready) { await document.fonts.ready; }
+    await new Promise(r => setTimeout(r, 50));
+  } catch(_) {}
 
+  // 用元素自身尺寸渲染，而不是视窗尺寸
   const bg = getComputedStyle(body).backgroundColor;
   const w = Math.max(target.scrollWidth, target.clientWidth);
   const h = Math.max(target.scrollHeight, target.clientHeight);
 
-  // 关键：用元素自身的完整宽高，而不是视窗
   const canvas = await html2canvas(target, {
     scale: 2,
     useCORS: true,
@@ -260,7 +267,7 @@
     windowWidth: w,
     windowHeight: h,
     scrollX: 0,
-    scrollY: -window.scrollY    // 消除视窗偏移导致的裁切
+    scrollY: -window.scrollY
   });
 
   const a = document.createElement('a');
