@@ -31,9 +31,26 @@ Settings → Pages → Build and deployment：
 - 关闭页面即可清空内存态；IndexedDB 数据可在浏览器设置中删除。
 
 ## 使用提示
-- JSON 很大时（百 MB 级），首次解析需要一定时间，进度条会分三段显示。  
+- JSON 很大时（百 MB 级），首次解析需要一定时间，进度条会分三段显示。
 - 主题提供四套（Echo Cyan / Amber Sand / Orchid Plum / Forest Teal），后续可在代码里增减。  
 - “时间轴摘要”支持“全部消息 / 仅 Assistant”切换，累计天数按“含首尾”口径计算。  
 - 模型占比支持“滚动90天 / 日历三月”与“消息/字符/近似 token”三种口径切换。
+
+index.html # 单文件骨架（UI 与占位脚本）
+README.md
+LICENSE # MIT
+.gitignore
+└─ assets/ # 截图、图标（可选）
+
+
+## 路线图
+- [ ] 流式解析与分片入库（IndexedDB）
+- [ ] 词云/句式/口癖统计（Worker 并行 + 精确回算）
+- [ ] 模型占比与时间轴摘要
+- [ ] 一键“保存为图片”（长图拼接）
+- [ ] 压测与断点恢复、错误处理与文档
+
+## 许可证
+本项目采用 MIT License。详见 `LICENSE`。
 
 ## 目录结构（最小集）
