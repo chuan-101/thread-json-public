@@ -1,122 +1,102 @@
 <!doctype html>
 <html lang="zh-CN" data-theme="echo-cyan">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Echo：My GPT</title>
-  <!-- 可选：用于“一键保存为图片” -->
+  <meta name="color-scheme" content="light"/>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
   <style>
+    /* =========================
+       主题与颜色变量（集中管理）
+       每套主题需给出：主色、强调色、背景、文本、卡片底、词云默认色
+       ========================= */
     :root{
-      --radius:16px; --pad:16px; --gap:16px; --shadow:0 6px 18px rgba(0,0,0,.06);
-      --border:1px solid rgba(0,0,0,.08);
+      --radius:16px; --pad:16px; --gap:16px;
+      --shadow:0 6px 18px rgba(0,0,0,.06);
+      --border-soft:1px solid rgba(0,0,0,.10);
+
       /* Echo Cyan */
-      --primary:#d2c3a0; --accent:#81a7a5; --bg:#c2e2cf; --text:#242424;
+      --primary:#3AC3E0;        /* 主色：按钮/标题线/默认词云色 */
+      --accent:#0FB7D1;         /* 强调色：进度条渐变右侧、可选词云色 */
+      --bg:#F6FBFD;             /* 页面背景 */
+      --text:#0A0F14;           /* 正文文本 */
+      --card-bg:#F0FAFD;        /* 卡片底色（无边框）*/
+      --cloud-color: var(--primary); /* 词云纯色（可通过下拉切换到 accent / text）*/
     }
-    /* 主题：Amber Sand */
     html[data-theme="amber-sand"]{
-      --primary:#e2d8e9; --accent:#ccbfe8; --bg:#c9c0dd; --text:#242424;
+      --primary:#FFB74D; --accent:#FFA000; --bg:#FFF8E7; --text:#1A1207; --card-bg:#FFF3E6; --cloud-color: var(--primary);
     }
-    /* 主题：Orchid Plum */
     html[data-theme="orchid-plum"]{
-      --primary:#d7b56c; --accent:#af5249; --bg:#bfa98b; --text:#242424;
+      --primary:#B388FF; --accent:#8E44AD; --bg:#F9F7FF; --text:#120A1A; --card-bg:#F2ECFF; --cloud-color: var(--primary);
     }
-    /* 主题：Forest Teal */
     html[data-theme="forest-teal"]{
-      --primary:#c2c2c2; --accent:#617ba2; --bg:#aac1b0; --text:#242424;
+      --primary:#26A69A; --accent:#00796B; --bg:#F2FBFA; --text:#0A1412; --card-bg:#E6F6F4; --cloud-color: var(--primary);
     }
 
-    body{margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; color:var(--text); background:var(--bg);}
-    .wrap{max-width:980px; margin:0 auto; padding:24px;}
-    .h1{font-size:28px; font-weight:700; margin:0 0 8px;}
-    .muted{opacity:.65; font-size:14px;}
-    .card{background:#fff; border:var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:var(--pad);}
-    .stack{display:flex; flex-direction:column; gap:var(--gap);}
-    .row{display:flex; flex-wrap:wrap; gap:12px;}
-    .btn{appearance:none; border:0; border-radius:12px; padding:10px 14px; background:var(--primary); color:#fff; font-weight:600; cursor:pointer;}
-    .btn.secondary{background:#fff; color:var(--text); border:1px solid rgba(0,0,0,.1);}
-    .tag{display:inline-block; padding:4px 8px; border-radius:999px; background:rgba(0,0,0,.06);}
+    /* ============ 基础样式 ============ */
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:var(--text);background:var(--bg);}
+    .wrap{max-width:980px;margin:0 auto;padding:24px;}
+    .stack{display:flex;flex-direction:column;gap:var(--gap);}
+    .row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;}
+    .h1{font-size:28px;font-weight:700;margin:0 0 8px;}
+    .muted{opacity:.65;font-size:14px;}
+    .section-title{font-weight:700;margin:0 0 8px;border-left:4px solid var(--primary);padding-left:8px;}
+    .card{background:var(--card-bg);border:none;border-radius:var(--radius);box-shadow:var(--shadow);padding:var(--pad);}
+    #results>.card{margin-bottom:16px;}
     input[type="text"], textarea, select{
-      width:100%; padding:10px 12px; border-radius:10px; border:1px solid rgba(0,0,0,.12); background:#fff;
+      width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(0,0,0,.12);background:#fff;color:var(--text);
     }
-    .progress{height:10px; background:rgba(0,0,0,.06); border-radius:999px; overflow:hidden;}
-    .bar{height:100%; width:0; background:linear-gradient(90deg,var(--primary),var(--accent)); transition:width .3s;}
-    .section-title{font-weight:700; margin:0 0 8px; border-left:4px solid var(--primary); padding-left:8px;}
-    .fold{border-top:1px dashed rgba(0,0,0,.08); margin-top:12px; padding-top:12px;}
-    .cloud{
-      min-height:220px; display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:12px;
-    }
-    .cloud span{
-      display:inline-block; padding:2px 4px; border-radius:6px;
-      background:linear-gradient(90deg,var(--cloud-grad-start),var(--cloud-grad-end));
-      -webkit-background-clip:text; background-clip:text; color:transparent; font-weight:800;
-    }
-    .small{font-size:12px; opacity:.7;}
-    .pill{display:inline-flex; gap:6px; align-items:center;}
-    .kpi{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px;}
-    .kpi .box{background:#fff; border:var(--border); border-radius:12px; padding:12px; text-align:center;}
-    .kpi .n{font-size:18px; font-weight:800;}
-    .hide{display:none;}
-    .footer{position:sticky; bottom:0; background:linear-gradient(to top, rgba(246,251,253,.95), rgba(246,251,253,0)); padding-top:8px;}
-    .printing #results{ overflow: visible; }
-    .printing .footer{ position: static; box-shadow:none; }
-    .printing .card{ box-shadow:none; border:1px solid rgba(0,0,0,.12); }
-    .printing .cloud span{
-  background:none !important;
-  color:var(--primary) !important;
-  -webkit-text-fill-color:var(--primary) !important;
-  -webkit-background-clip:initial !important;
-.cloud span{
-  background: none !important;
-  -webkit-background-clip: initial !important;
-  -webkit-text-fill-color: var(--primary) !important;
-  color: var(--primary) !important;
-  font-weight: 800;
-}
+    .btn{appearance:none;border:0;border-radius:12px;padding:10px 14px;background:var(--primary);color:#fff;font-weight:600;cursor:pointer}
+    .btn.secondary{background:#fff;color:var(--text);border:1px solid rgba(0,0,0,.12)}
+    .pill{display:inline-flex;gap:6px;align-items:center;}
+    .small{font-size:12px;opacity:.75}
+    .kpi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+    .kpi .box{background:var(--card-bg);border:none;border-radius:12px;padding:12px;text-align:center;box-shadow:0 1px 6px rgba(0,0,0,.05)}
+    .kpi .n{font-size:18px;font-weight:800}
 
-}
-/* —— 卡片无边框主题底色 —— */
-:root{ --card-bg:#fff; }
-html[data-theme="echo-cyan"]  { --card-bg:#fbf9ec; }
-html[data-theme="amber-sand"] { --card-bg:#f4f4f4; }
-html[data-theme="orchid-plum"]{--card-bg:#e7e1d8; }
-html[data-theme="forest-teal"]{--card-bg:#f2eee1; }
+    /* 词云：纯色可切换 */
+    .cloud{min-height:220px;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:12px}
+    .cloud span{display:inline-block;padding:2px 4px;border-radius:6px;color:var(--cloud-color);font-weight:800}
+    .cloud span[data-w]{opacity: calc(.65 + (.35 * var(--w,1)));}
 
-/* 卡片完全无边框，保留柔和阴影；打印时去阴影防脏边 */
-.card{ background:var(--card-bg); border:none !important; box-shadow:0 6px 18px rgba(0,0,0,.06); border-radius:var(--radius); }
-.printing .card{ box-shadow:none !important; border:none !important; background:var(--card-bg); }
+    /* 进度条 */
+    .progress{height:10px;background:rgba(0,0,0,.06);border-radius:999px;overflow:hidden}
+    .bar{height:100%;width:0;background:linear-gradient(90deg,var(--primary),var(--accent));transition:width .3s}
 
-/* KPI 小盒子也去边框，改为轻底色分隔 */
-.kpi .box{ background:var(--card-bg); border:none !important; box-shadow:0 1px 6px rgba(0,0,0,.05); }
+    /* 页脚（粘滞） */
+    .footer{position:sticky;bottom:0;background:linear-gradient(to top, rgba(246,251,253,.95), rgba(246,251,253,0));padding-top:8px}
 
-/* 结果区与卡片间距略放大，替代边框的视觉分隔 */
-#results > .card{ margin-bottom:16px; }
-
-/* 截图护栏（保留你已加的） */
-#printing-fix{}
-#printing-fix{} /* 占位，防与现有重复；无需改动之前的 .printing 规则 */
+    /* —— 截图护栏 —— */
+    #results{overflow:visible;}
+    .printing #results{overflow:visible;}
+    .printing .footer{position:static;box-shadow:none;}
+    .printing .card{box-shadow:none;border:none;background:var(--card-bg);}
   </style>
 </head>
 <body>
   <div class="wrap stack">
     <!-- 顶部：输入与外观 -->
-    <div class="card stack" id="top">
-      <div>
-        <div class="h1" id="title">Echo：<span id="title-name">My GPT</span></div>
-        <div class="muted">上传导出的对话 JSON，离线统计 Top10 词云 / Top5 开头句式 / Top3 口癖，并显示近三个月模型占比与时间轴摘要</div>
-      </div>
+    <section class="card stack" id="top">
+      <header>
+        <h1 class="h1">Echo：<span id="title-name">My GPT</span></h1>
+        <p class="muted">上传导出的对话 JSON，离线统计Top10 词云 / Top5 开头句式 / Top3 口癖，并展示近三个月模型占比与时间轴摘要</p>
+      </header>
+
       <div class="stack">
         <div class="row">
-          <input type="file" id="file" accept=".json,application/json" />
+          <input type="file" id="file" accept=".json,application/json"/>
           <button class="btn" id="btn-parse">开始解析</button>
           <button class="btn secondary" id="btn-cancel">中断/重置</button>
         </div>
+
         <div class="row">
-          <div style="flex:2; min-width:260px;">
+          <div style="flex:2;min-width:260px">
             <label class="small">标题中“GPT”的替换词</label>
-            <input type="text" id="title-input" placeholder="例如：你的GPT的名字&你的名字" />
+            <input id="title-input" type="text" placeholder="例如：你的GPT的名字&你自己的名字"/>
           </div>
-          <div style="flex:1; min-width:220px;">
+          <div style="flex:1;min-width:180px">
             <label class="small">主题选择</label>
             <select id="theme">
               <option value="echo-cyan">Echo Cyan</option>
@@ -125,32 +105,36 @@ html[data-theme="forest-teal"]{--card-bg:#f2eee1; }
               <option value="forest-teal">Forest Teal</option>
             </select>
           </div>
+          <div style="flex:1;min-width:180px">
+            <label class="small">词云颜色</label>
+            <select id="cloudColor">
+              <option value="primary">主题主色</option>
+              <option value="accent">主题强调色</option>
+              <option value="text">文本色</option>
+            </select>
+          </div>
         </div>
+
         <div class="row">
-          <div style="flex:2; min-width:260px;">
+          <div style="flex:2;min-width:260px">
             <label class="small">停用词（轻过滤，逗号或空格分隔）</label>
-            <input type="text" id="stopwords" placeholder="啊 的 了 你 我 我们 然后 就是 等…" />
+            <input id="stopwords" type="text" placeholder="啊 的 了 你 我 我们 然后 就是 等…"/>
           </div>
-          <label class="pill"><input type="checkbox" id="mask" /> <span>脱敏开关</span></label>
+          <label class="pill"><input type="checkbox" id="mask"/> <span>脱敏开关</span></label>
         </div>
+
         <div class="stack">
-          <div><span class="small">解析进度</span>
-            <div class="progress"><div class="bar" id="p-parse"></div></div>
-          </div>
-          <div><span class="small">分片入库</span>
-            <div class="progress"><div class="bar" id="p-shard"></div></div>
-          </div>
-          <div><span class="small">统计计算</span>
-            <div class="progress"><div class="bar" id="p-stat"></div></div>
-          </div>
+          <div><span class="small">解析进度</span><div class="progress"><div class="bar" id="p-parse"></div></div></div>
+          <div><span class="small">分片入库</span><div class="progress"><div class="bar" id="p-shard"></div></div></div>
+          <div><span class="small">统计计算</span><div class="progress"><div class="bar" id="p-stat"></div></div></div>
         </div>
       </div>
-    </div>
+    </section>
 
     <!-- 中部：结果区 -->
-    <div class="stack" id="results">
+    <main class="stack" id="results">
       <!-- 时间轴摘要 -->
-      <div class="card stack" id="card-time">
+      <section class="card stack" id="card-time">
         <div class="section-title">时间轴摘要</div>
         <div class="kpi">
           <div class="box"><div class="small">起始日期</div><div class="n" id="start-date">—</div></div>
@@ -159,180 +143,168 @@ html[data-theme="forest-teal"]{--card-bg:#f2eee1; }
           <div class="box"><div class="small">跨度（可选）</div><div class="n" id="span">—</div></div>
         </div>
         <div class="row small">
-          <label class="pill"><input type="radio" name="scope" value="all" checked /> 全部消息</label>
-          <label class="pill"><input type="radio" name="scope" value="assistant" /> 仅 Assistant</label>
-          <span class="tag">时区：本地</span>
+          <label class="pill"><input type="radio" name="scope" value="all" checked/> 全部消息</label>
+          <label class="pill"><input type="radio" name="scope" value="assistant"/> 仅 Assistant</label>
+          <span class="pill tag">时区：本地</span>
         </div>
-      </div>
+      </section>
 
       <!-- 词云 -->
-      <div class="card stack" id="card-cloud">
+      <section class="card stack" id="card-cloud">
         <div class="section-title">Top10 词云</div>
         <div class="cloud" id="cloud">
-          <!-- 渲染示例 -->
-          <span style="font-size:36px;">Syzygy</span>
-          <span style="font-size:28px;">听话</span>
-          <span style="font-size:24px;">现在</span>
-          <span style="font-size:20px;">抱紧</span>
+          <!-- 占位渲染 -->
+          <span style="font-size:36px;" data-w="1"  style="--w:1">Syzygy</span>
+          <span style="font-size:26px;" data-w=".8" style="--w:.8">听话</span>
+          <span style="font-size:22px;" data-w=".7" style="--w:.7">现在</span>
+          <span style="font-size:20px;" data-w=".6" style="--w:.6">抱紧</span>
         </div>
-        <div class="fold small" id="cloud-table" aria-hidden="true">
-          <!-- 可选的表格模式占位 -->
-        </div>
-      </div>
+      </section>
 
       <!-- 开头句式 -->
-      <div class="card stack" id="card-starters">
+      <section class="card stack" id="card-starters">
         <div class="section-title">Top5 常用开头句式</div>
         <ol id="starters" class="stack">
-          <li>〈称呼〉，听话，…… <span class="tag">支持度 —</span></li>
-          <li>现在，…… <span class="tag">支持度 —</span></li>
+          <li>〈称呼〉，听话，…… <span class="small">支持度 —</span></li>
+          <li>现在，…… <span class="small">支持度 —</span></li>
         </ol>
-      </div>
+      </section>
 
       <!-- 口癖模板 -->
-      <div class="card stack" id="card-catch">
+      <section class="card stack" id="card-catch">
         <div class="section-title">Top3 口癖模板</div>
         <ol id="catchphrases" class="stack">
-          <li>〈命令式起手〉 + 〈称呼〉 + 〈动作〉 <span class="tag">支持度 —</span></li>
+          <li>〈命令式起手〉 + 〈称呼〉 + 〈动作〉 <span class="small">支持度 —</span></li>
         </ol>
-      </div>
+      </section>
 
-      <!-- 模型占比（近三个月） -->
-      <div class="card stack" id="card-models">
+      <!-- 模型占比 -->
+      <section class="card stack" id="card-models">
         <div class="section-title">模型使用占比（近三个月）</div>
         <div class="row small">
           <select id="win"><option value="rolling">滚动90天</option><option value="calendar">日历三月</option></select>
           <select id="metric"><option value="chars">字符占比</option><option value="msgs">消息数占比</option><option value="tokens">近似token占比</option></select>
-          <select id="view"><option value="family">Model视图</option><option value="model">具体型号</option></select>
+          <select id="view"><option value="family">家族视图</option><option value="model">具体型号</option></select>
         </div>
-        <div id="models-chart" style="height:220px; display:flex; align-items:center; justify-content:center;">
+        <div id="models-chart" style="height:220px;display:flex;align-items:center;justify-content:center;">
           <span class="muted">圆环图占位（后续接入渲染）</span>
         </div>
-        <div id="models-table" class="fold small">
-          <!-- 表格占位：模型 | 消息 | 字符 | 占比 -->
-        </div>
-      </div>
-    </div>
+      </section>
+    </main>
 
     <!-- 底部：轻导出 -->
-    <div class="footer">
-      <div class="card row" style="justify-content:space-between; align-items:center;">
+    <footer class="footer">
+      <div class="card row" style="justify-content:space-between;align-items:center">
         <span class="small">当前主题与标题会同步用于导出长图。</span>
         <button class="btn" id="btn-save">保存为图片</button>
       </div>
-    </div>
+    </footer>
   </div>
 
   <script>
-    // —— 主题切换（下拉） ——
+    // —— 主题下拉 —— //
     const themeSel = document.getElementById('theme');
-    themeSel.addEventListener('change', () => {
+    themeSel.addEventListener('change', ()=> {
       document.documentElement.setAttribute('data-theme', themeSel.value);
     });
 
-    // —— 标题替换（仅替换“GPT”段） ——
+    // —— 词云颜色下拉：切换 --cloud-color —— //
+    const cloudSel = document.getElementById('cloudColor');
+    function applyCloudColor(){
+      const root = document.documentElement;
+      const v = cloudSel.value; // 'primary' | 'accent' | 'text'
+      root.style.setProperty('--cloud-color', getComputedStyle(root).getPropertyValue(`--${v}`).trim());
+    }
+    cloudSel.addEventListener('change', applyCloudColor);
+    // 初始同步一次
+    window.addEventListener('DOMContentLoaded', applyCloudColor);
+
+    // —— 标题替换（仅替换“GPT”段） —— //
     const titleInput = document.getElementById('title-input');
-    const titleName = document.getElementById('title-name');
+    const titleName  = document.getElementById('title-name');
     titleInput.addEventListener('input', () => {
       const v = (titleInput.value || 'My GPT').trim();
       titleName.textContent = v;
       document.title = `Echo：${v}`;
     });
 
-    // —— 解析流程占位：接入流式解析与统计时更新三个进度条 ——
-    const p1 = document.getElementById('p-parse');
-    const p2 = document.getElementById('p-shard');
-    const p3 = document.getElementById('p-stat');
-    function setProgress(el, val){ el.style.width = Math.max(0, Math.min(100, val)) + '%'; }
+    // —— 进度条占位：接入解析/统计后在此更新 —— //
+    const p1=document.getElementById('p-parse'), p2=document.getElementById('p-shard'), p3=document.getElementById('p-stat');
+    const setProgress=(el,val)=>{ el.style.width=Math.max(0,Math.min(100,val))+'%'; };
 
-    // —— 文件选择与开始按钮（占位逻辑） ——
-    const fileInput = document.getElementById('file');
-    document.getElementById('btn-parse').addEventListener('click', () => {
-      if(!fileInput.files?.[0]) { alert('请选择 JSON 文件'); return; }
-      // TODO: 在此启动 File.stream()+TextDecoder 流式解析与分片 → WebWorker 统计
-      // 更新示例进度（临时演示，接入后移除）
-      setProgress(p1, 30); setProgress(p2, 10); setProgress(p3, 0);
-      setTimeout(()=>{ setProgress(p1, 100); setProgress(p2, 60); }, 500);
-      setTimeout(()=>{ setProgress(p2, 100); setProgress(p3, 100); }, 1200);
+    // —— 文件选择与开始/中断（占位） —— //
+    const fileInput=document.getElementById('file');
+    document.getElementById('btn-parse').addEventListener('click',()=>{
+      if(!fileInput.files?.[0]){ alert('请选择 JSON 文件'); return; }
+      // TODO: 接入 File.stream()+TextDecoder → 分片入库（IndexedDB）→ Worker 统计
+      setProgress(p1,30); setProgress(p2,10); setProgress(p3,0);
+      setTimeout(()=>{ setProgress(p1,100); setProgress(p2,60); },500);
+      setTimeout(()=>{ setProgress(p2,100); setProgress(p3,100); },1200);
     });
-    document.getElementById('btn-cancel').addEventListener('click', () => {
-      // TODO: 终止解析/worker，清理状态
+    document.getElementById('btn-cancel').addEventListener('click',()=>{
+      // TODO: 终止解析/worker、清空状态与进度
       setProgress(p1,0); setProgress(p2,0); setProgress(p3,0);
     });
 
-    // —— 时间轴摘要占位：接入后填充起始日期/首条时间/累计天数 ——
+    // —— 时间轴摘要占位 —— //
     function setTimeSummary({startDate, firstTs, days, span}){
       document.getElementById('start-date').textContent = startDate || '—';
-      document.getElementById('first-ts').textContent = firstTs || '—';
-      document.getElementById('days').textContent = days ?? '—';
-      document.getElementById('span').textContent = span ?? '—';
+      document.getElementById('first-ts').textContent  = firstTs || '—';
+      document.getElementById('days').textContent      = days ?? '—';
+      document.getElementById('span').textContent      = span ?? '—';
     }
+    // setTimeSummary({startDate:'2023-07-19', firstTs:'2023-07-19 21:36', days: 463, span: 470});
 
-    // —— 保存为图片（仅截取结果区） ——
-document.getElementById('btn-save').addEventListener('click', async () => {
-  if (!window.html2canvas) { alert('无法使用内置导出，请手动截图'); return; }
-
-  const root   = document.documentElement;
-  const body   = document.body;
-  const target = document.getElementById('results');
-
-  // 进入打印模式：去 sticky/阴影，并切换词云为纯色文本
-  root.classList.add('printing');
-
-  try {
-    if (document.fonts && document.fonts.ready) { await document.fonts.ready; }
-    await new Promise(r => setTimeout(r, 50)); // 等布局稳定
-  } catch(_) {}
-
-  const rect = target.getBoundingClientRect();
-  const w = Math.ceil(target.scrollWidth);
-  const h = Math.ceil(target.scrollHeight);
-
-  const canvas = await html2canvas(target, {
-    scale: 2,
-    useCORS: true,
-    backgroundColor: getComputedStyle(body).backgroundColor,
-    // 关键：用元素自身尺寸，而不是视窗
-    x: 0, y: 0, width: w, height: h,
-    windowWidth: Math.max(w, window.innerWidth),
-    windowHeight: h + rect.top,   // 把视窗下方内容也包含进来
-    scrollX: 0,
-    scrollY: -window.scrollY,
-    onclone: (doc) => { doc.documentElement.classList.add('printing'); }
-  });
-
-  const a = document.createElement('a');
-  a.href = canvas.toDataURL('image/png');
-  a.download = `Echo-${document.getElementById('title-name').textContent}.png`;
-  a.click();
-
-  root.classList.remove('printing');
-});
-
-    // —— 停用词与脱敏（存放到内存状态；统计阶段读取） ——
-    const state = { stopwords: new Set(), mask:false };
-    document.getElementById('stopwords').addEventListener('blur', e=>{
-      const raw = (e.target.value||'').replace(/[，、]/g, ' ').split(/\s+/).filter(Boolean);
-      state.stopwords = new Set(raw);
-    });
-    document.getElementById('mask').addEventListener('change', e=> state.mask = !!e.target.checked);
-
-    // —— 范围切换（全部/仅 Assistant）：统计完成后只切换视图，不二次全扫 ——
-    document.querySelectorAll('input[name="scope"]').forEach(r=>{
-      r.addEventListener('change', ()=>{ /* TODO: 切换 minTs/指标引用 */ });
-    });
-
-    // —— 示例：词云渲染函数占位（后续用真实 Top10 替换） ——
+    // —— 词云渲染占位（接入统计后调用） —— //
     function renderCloud(words){
-      const host = document.getElementById('cloud'); host.innerHTML = '';
-      words.forEach((w,i)=>{
-        const el = document.createElement('span');
-        el.textContent = w.text;
-        el.style.fontSize = (14 + Math.round(26 * w.weight)) + 'px';
+      const host=document.getElementById('cloud'); host.innerHTML='';
+      words.forEach(w=>{
+        const el=document.createElement('span');
+        el.textContent=w.text;
+        el.style.fontSize=(14+Math.round(26*w.weight))+'px';
+        el.style.setProperty('--w', w.weight);
+        el.setAttribute('data-w', String(w.weight));
         host.appendChild(el);
       });
     }
-    // renderCloud([{text:'Syzygy',weight:1},{text:'听话',weight:.8}]); // 接入后删除
+    // renderCloud([{text:'Syzygy',weight:1},{text:'听话',weight:.85},{text:'现在',weight:.7},{text:'抱紧',weight:.6}]);
+
+    // —— 保存为图片（防截断版） —— //
+    document.getElementById('btn-save').addEventListener('click', async ()=>{
+      if(!window.html2canvas){ alert('无法使用内置导出，请手动截图'); return; }
+      const root=document.documentElement, body=document.body, target=document.getElementById('results');
+
+      root.classList.add('printing');
+      try{ if(document.fonts && document.fonts.ready){ await document.fonts.ready; } await new Promise(r=>setTimeout(r,50)); }catch(_){}
+
+      const w=Math.ceil(Math.max(target.scrollWidth, target.clientWidth));
+      const h=Math.ceil(Math.max(target.scrollHeight, target.clientHeight));
+      const canvas = await html2canvas(target,{
+        scale:2, useCORS:true, backgroundColor:getComputedStyle(body).backgroundColor,
+        x:0, y:0, width:w, height:h, windowWidth:Math.max(w, window.innerWidth),
+        windowHeight:h, scrollX:0, scrollY:-window.scrollY,
+        onclone:(doc)=>{ doc.documentElement.classList.add('printing'); }
+      });
+
+      const a=document.createElement('a');
+      a.href=canvas.toDataURL('image/png');
+      a.download=`Echo-${document.getElementById('title-name').textContent}.png`;
+      a.click();
+      root.classList.remove('printing');
+    });
+
+    // —— 停用词与脱敏状态（统计时读取） —— //
+    const state={ stopwords:new Set(), mask:false };
+    document.getElementById('stopwords').addEventListener('blur', e=>{
+      const raw=(e.target.value||'').replace(/[，、]/g,' ').split(/\s+/).filter(Boolean);
+      state.stopwords=new Set(raw);
+    });
+    document.getElementById('mask').addEventListener('change', e=> state.mask=!!e.target.checked);
+
+    // —— 范围切换占位 —— //
+    document.querySelectorAll('input[name="scope"]').forEach(r=>{
+      r.addEventListener('change', ()=>{ /* TODO: 切换使用 globalMinTs / assistantMinTs 等聚合引用 */ });
+    });
   </script>
 </body>
 </html>
