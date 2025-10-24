@@ -237,12 +237,40 @@
 
     // —— 保存为图片（仅截取结果区） ——
     document.getElementById('btn-save').addEventListener('click', async () => {
-      const target = document.getElementById('results');
-      if (!window.html2canvas) { alert('无法使用内置导出，请手动截图'); return; }
-      const canvas = await html2canvas(target, {scale:2, useCORS:true, backgroundColor: getComputedStyle(document.body).backgroundColor});
-      const url = canvas.toDataURL('image/png');
-      const a = document.createElement('a'); a.href = url; a.download = `Echo-${titleName.textContent}.png`; a.click();
-    });
+  const page = document.documentElement;
+  const body = document.body;
+  const target = document.getElementById('results');
+
+  // 进入“打印模式”
+  page.classList.add('printing');
+
+  // 确保字体与布局稳定
+  if (document.fonts && document.fonts.ready) { await document.fonts.ready; }
+  await new Promise(r => setTimeout(r, 50));
+
+  const bg = getComputedStyle(body).backgroundColor;
+  const w = Math.max(target.scrollWidth, target.clientWidth);
+  const h = Math.max(target.scrollHeight, target.clientHeight);
+
+  // 关键：用元素自身的完整宽高，而不是视窗
+  const canvas = await html2canvas(target, {
+    scale: 2,
+    useCORS: true,
+    backgroundColor: bg,
+    windowWidth: w,
+    windowHeight: h,
+    scrollX: 0,
+    scrollY: -window.scrollY    // 消除视窗偏移导致的裁切
+  });
+
+  const a = document.createElement('a');
+  a.href = canvas.toDataURL('image/png');
+  a.download = `Echo-${document.getElementById('title-name').textContent}.png`;
+  a.click();
+
+  // 退出“打印模式”
+  page.classList.remove('printing');
+});
 
     // —— 停用词与脱敏（存放到内存状态；统计阶段读取） ——
     const state = { stopwords: new Set(), mask:false };
