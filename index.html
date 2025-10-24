@@ -12,22 +12,18 @@
       --border:1px solid rgba(0,0,0,.08);
       /* Echo Cyan */
       --primary:#d2c3a0; --accent:#81a7a5; --bg:#c2e2cf; --text:#242424;
-      --cloud-grad:#81a7a5; 
     }
     /* 主题：Amber Sand */
     html[data-theme="amber-sand"]{
       --primary:#e2d8e9; --accent:#ccbfe8; --bg:#c9c0dd; --text:#242424;
-      --cloud-grad:#ccbfe8;
     }
     /* 主题：Orchid Plum */
     html[data-theme="orchid-plum"]{
       --primary:#d7b56c; --accent:#af5249; --bg:#bfa98b; --text:#242424;
-      --cloud-grad:#af5249;
     }
     /* 主题：Forest Teal */
     html[data-theme="forest-teal"]{
       --primary:#c2c2c2; --accent:#617ba2; --bg:#aac1b0; --text:#242424;
-      --cloud-grad:#617ba2;
     }
 
     body{margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; color:var(--text); background:var(--bg);}
@@ -70,6 +66,14 @@
   color:var(--primary) !important;
   -webkit-text-fill-color:var(--primary) !important;
   -webkit-background-clip:initial !important;
+.cloud span{
+  background: none !important;
+  -webkit-background-clip: initial !important;
+  -webkit-text-fill-color: var(--primary) !important;
+  color: var(--primary) !important;
+  font-weight: 800;
+}
+
 }
 /* —— 卡片无边框主题底色 —— */
 :root{ --card-bg:#fff; }
