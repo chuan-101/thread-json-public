@@ -56,7 +56,6 @@
     .kpi .box{background:var(--card-bg);border:none;border-radius:12px;padding:12px;text-align:center;box-shadow:0 1px 6px rgba(0,0,0,.05)}
     .kpi .n{font-size:18px;font-weight:800}
 
-    /* 词云：纯色可切换 */
     .cloud{min-height:220px;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:12px}
     .cloud span{display:inline-block;padding:2px 4px;border-radius:6px;color:var(--cloud-color);font-weight:800}
     .cloud span[data-w]{opacity: calc(.65 + (.35 * var(--w,1)));}
@@ -103,14 +102,6 @@
               <option value="amber-sand">Amber Sand</option>
               <option value="orchid-plum">Orchid Plum</option>
               <option value="forest-teal">Forest Teal</option>
-            </select>
-          </div>
-          <div style="flex:1;min-width:180px">
-            <label class="small">词云颜色</label>
-            <select id="cloudColor">
-              <option value="primary">主题主色</option>
-              <option value="accent">主题强调色</option>
-              <option value="text">文本色</option>
             </select>
           </div>
         </div>
@@ -207,17 +198,6 @@
     themeSel.addEventListener('change', ()=> {
       document.documentElement.setAttribute('data-theme', themeSel.value);
     });
-
-    // —— 词云颜色下拉：切换 --cloud-color —— //
-    const cloudSel = document.getElementById('cloudColor');
-    function applyCloudColor(){
-      const root = document.documentElement;
-      const v = cloudSel.value; // 'primary' | 'accent' | 'text'
-      root.style.setProperty('--cloud-color', getComputedStyle(root).getPropertyValue(`--${v}`).trim());
-    }
-    cloudSel.addEventListener('change', applyCloudColor);
-    // 初始同步一次
-    window.addEventListener('DOMContentLoaded', applyCloudColor);
 
     // —— 标题替换（仅替换“GPT”段） —— //
     const titleInput = document.getElementById('title-input');
