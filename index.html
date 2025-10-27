@@ -223,6 +223,12 @@
 
     // —— 文件选择与开始/中断（占位） —— //
     const fileInput=document.getElementById('file');
+    const fileNameSpan = document.getElementById('file-name');
+
+fileInput.addEventListener('change', () => {
+  const fileName = fileInput.files?.[0]?.name || '';
+  fileNameSpan.textContent = fileName ? `已选择：${fileName}` : '';
+});
     document.getElementById('btn-parse').addEventListener('click',()=>{
       if(!fileInput.files?.[0]){ alert('请选择 JSON 文件'); return; }
       // TODO: 接入 File.stream()+TextDecoder → 分片入库（IndexedDB）→ Worker 统计
@@ -292,12 +298,17 @@ document.getElementById('btn-save').addEventListener('click', async ()=>{
   ctx.fillRect(0,0,framed.width,framed.height);
   ctx.drawImage(canvas, pad, pad); // 原图居中放入
 
-  const a=document.createElement('a');
-  a.href=framed.toDataURL('image/png');
-  a.download=`Echo-${document.getElementById('title-name').textContent}.png`;
+try {
+  const safeName = document.getElementById('title-name').textContent.replace(/[\/\\:*?"<>|]/g, '-');
+  const a = document.createElement('a');
+  a.href = framed.toDataURL('image/png');
+  a.download = `Echo-${safeName}.png`;
   a.click();
+} catch(e) {
+  alert('图片太大，导出失败。建议手动截图。');
+}
 
-  root.classList.remove('printing');
+root.classList.remove('printing');
 });
 
     // —— 停用词与脱敏状态（统计时读取） —— //
