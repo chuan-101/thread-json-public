@@ -259,28 +259,46 @@
     // renderCloud([{text:'Syzygy',weight:1},{text:'听话',weight:.85},{text:'现在',weight:.7},{text:'抱紧',weight:.6}]);
 
     // —— 保存为图片（防截断版） —— //
-    document.getElementById('btn-save').addEventListener('click', async ()=>{
-      if(!window.html2canvas){ alert('无法使用内置导出，请手动截图'); return; }
-      const root=document.documentElement, body=document.body, target=document.getElementById('results');
+document.getElementById('btn-save').addEventListener('click', async ()=>{
+  if(!window.html2canvas){ alert('无法使用内置导出，请手动截图'); return; }
 
-      root.classList.add('printing');
-      try{ if(document.fonts && document.fonts.ready){ await document.fonts.ready; } await new Promise(r=>setTimeout(r,50)); }catch(_){}
+  const root=document.documentElement, body=document.body, target=document.getElementById('results');
+  const BG = getComputedStyle(body).backgroundColor;
+  const SCALE = 2;        // 导出清晰度倍率
+  const MARGIN = 40;      // 四周留白（px，按需改 24/40 等）
 
-      const w=Math.ceil(Math.max(target.scrollWidth, target.clientWidth));
-      const h=Math.ceil(Math.max(target.scrollHeight, target.clientHeight));
-      const canvas = await html2canvas(target,{
-        scale:2, useCORS:true, backgroundColor:getComputedStyle(body).backgroundColor,
-        x:0, y:0, width:w, height:h, windowWidth:Math.max(w, window.innerWidth),
-        windowHeight:h, scrollX:0, scrollY:-window.scrollY,
-        onclone:(doc)=>{ doc.documentElement.classList.add('printing'); }
-      });
+  root.classList.add('printing');
+  try{ if(document.fonts && document.fonts.ready){ await document.fonts.ready; } await new Promise(r=>setTimeout(r,50)); }catch(_){}
 
-      const a=document.createElement('a');
-      a.href=canvas.toDataURL('image/png');
-      a.download=`Echo-${document.getElementById('title-name').textContent}.png`;
-      a.click();
-      root.classList.remove('printing');
-    });
+  const w=Math.ceil(Math.max(target.scrollWidth, target.clientWidth));
+  const h=Math.ceil(Math.max(target.scrollHeight, target.clientHeight));
+
+  const canvas = await html2canvas(target,{
+    scale:SCALE, useCORS:true, backgroundColor:BG,
+    x:0, y:0, width:w, height:h,
+    windowWidth:Math.max(w, window.innerWidth),
+    windowHeight:h, scrollX:0, scrollY:-window.scrollY,
+    onclone:(doc)=>doc.documentElement.classList.add('printing')
+  });
+
+  // —— 关键：在原图外再包一层留白画布 —— //
+  const pad = Math.round(MARGIN * SCALE);
+  const framed = document.createElement('canvas');
+  framed.width  = canvas.width  + pad*2;
+  framed.height = canvas.height + pad*2;
+
+  const ctx = framed.getContext('2d');
+  ctx.fillStyle = BG;             // 与页面一致的背景色
+  ctx.fillRect(0,0,framed.width,framed.height);
+  ctx.drawImage(canvas, pad, pad); // 原图居中放入
+
+  const a=document.createElement('a');
+  a.href=framed.toDataURL('image/png');
+  a.download=`Echo-${document.getElementById('title-name').textContent}.png`;
+  a.click();
+
+  root.classList.remove('printing');
+});
 
     // —— 停用词与脱敏状态（统计时读取） —— //
     const state={ stopwords:new Set(), mask:false };
