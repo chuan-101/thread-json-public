@@ -268,7 +268,31 @@ fileInput.addEventListener('change', () => {
 document.getElementById('btn-save').addEventListener('click', async ()=>{
   if(!window.html2canvas){ alert('无法使用内置导出，请手动截图'); return; }
 
-  const root=document.documentElement, body=document.body, target=document.getElementById('results');
+  const root=document.documentElement, body=document.body;
+
+// 创建临时导出容器
+const exportContainer = document.createElement('div');
+exportContainer.style.cssText = 'padding:24px; background:'+getComputedStyle(document.body).backgroundColor;
+
+// 克隆标题
+const titleClone = document.createElement('div');
+titleClone.innerHTML = `
+  <h1 style="font-size:28px;font-weight:700;margin:0 0 8px;color:var(--text)">
+    Echo：<span>${document.getElementById('title-name').textContent}</span>
+  </h1>
+  <p style="opacity:.65;font-size:14px;margin:0 0 24px;color:var(--text)">
+    上传导出的对话JSON，离线统计词云 / 开头句式 /口癖，展示近三个月模型占比与时间轴摘要
+  </p>
+`;
+
+// 克隆结果区
+const resultsClone = document.getElementById('results').cloneNode(true);
+
+exportContainer.appendChild(titleClone);
+exportContainer.appendChild(resultsClone);
+document.body.appendChild(exportContainer);
+
+const target = exportContainer;
   const BG = getComputedStyle(body).backgroundColor;
   const SCALE = 2;        // 导出清晰度倍率
   const MARGIN = 40;      // 四周留白（px，按需改 24/40 等）
@@ -309,6 +333,7 @@ try {
 }
 
 root.classList.remove('printing');
+  document.body.removeChild(exportContainer);
 });
 
     // —— 停用词与脱敏状态（统计时读取） —— //
