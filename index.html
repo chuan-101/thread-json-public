@@ -59,6 +59,14 @@
     .cloud span{display:inline-block;padding:2px 4px;border-radius:6px;color:var(--primary);font-weight:800}
     .cloud span[data-w]{opacity: calc(.65 + (.35 * var(--w,1)));}
 
+    /* 无障碍隐藏原生 file 输入，仅保留 label 按钮触发 */
+.visually-hidden{
+  position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
+}
+/* 紧凑行间距 */
+.row.tight{ gap:8px; }
+
     /* 进度条 */
     .progress{height:10px;background:rgba(0,0,0,.06);border-radius:999px;overflow:hidden}
     .bar{height:100%;width:0;background:linear-gradient(90deg,var(--primary),var(--accent));transition:width .3s}
@@ -83,11 +91,13 @@
       </header>
 
       <div class="stack">
-        <div class="row">
-          <input type="file" id="file" accept=".json,application/json"/>
-          <button class="btn" id="btn-parse">开始解析</button>
-          <button class="btn secondary" id="btn-cancel">中断/重置</button>
-        </div>
+<div class="row tight">
+  <input type="file" id="file" accept=".json,application/json" class="visually-hidden" />
+  <label for="file" class="btn secondary" id="btn-file">选择文件</label>
+  <span id="file-name" class="small muted"></span>
+  <button class="btn sm" id="btn-parse">开始解析</button>
+  <button class="btn secondary sm" id="btn-cancel">中断/重置</button>
+</div>
 
         <div class="row">
           <div style="flex:2;min-width:260px">
