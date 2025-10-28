@@ -14,10 +14,25 @@ export async function parseJSONStream(
 
   const assistName = (opts.assistName || '').trim();
   const totalBytes = typeof file.size === 'number' ? file.size : 0;
+  const MIN_CHUNK = 1024 * 1024;
+  const MAX_CHUNK = 4 * 1024 * 1024;
+  const PREFERRED_CHUNK = 2 * 1024 * 1024;
 
-  const reader = file.stream().getReader();
+  let stream = file.stream();
+  let byob = false;
+  let reader;
+  try {
+    reader = stream.getReader({ mode: 'byob' });
+    byob = true;
+  } catch (err) {
+    stream = file.stream();
+    reader = stream.getReader();
+  }
 
   const decoder = new TextDecoder('utf-8');
+  const requested = totalBytes ? Math.min(totalBytes, MAX_CHUNK) : PREFERRED_CHUNK;
+  const chunkSize = Math.min(MAX_CHUNK, Math.max(MIN_CHUNK, requested, PREFERRED_CHUNK));
+  let chunkBuffer = byob ? new Uint8Array(chunkSize) : null;
 
   let buffer = '';
   let bytesRead = 0;
@@ -412,9 +427,15 @@ export async function parseJSONStream(
     let readChunk;
     let done = false;
     try {
-      const { value, done: readerDone } = await reader.read();
-      readChunk = value;
-      done = readerDone;
+      if (byob) {
+        const { value, done: readerDone } = await reader.read(chunkBuffer);
+        readChunk = value;
+        done = readerDone;
+      } else {
+        const res = await reader.read();
+        readChunk = res.value;
+        done = res.done;
+      }
     } catch (err) {
       if (err?.name === 'AbortError') {
         aborted = true;
