@@ -1,3 +1,5 @@
+import { appendToShard, finalizeShard, getShardProgress } from './db.js';
+
 export async function parseJSONStream(
   file,
   onMessage,
@@ -37,11 +39,28 @@ export async function parseJSONStream(
   let parseIndex = 0; // current index in buffer for parsing
   let finished = false;
 
-  const updateProgress = () => {
-    if (typeof onProgress === 'function') {
-      const pct = totalBytes ? Math.min(100, (bytesRead / totalBytes) * 100) : 0;
-      onProgress({ parsePct: pct });
+  const progressState = {
+    parsePct: 0,
+    shardPct: 0,
+    statsPct: undefined,
+  };
+
+  const updateProgress = (patch = {}) => {
+    if (typeof onProgress !== 'function') return;
+    if (typeof patch.parsePct === 'number') {
+      progressState.parsePct = patch.parsePct;
     }
+    if (typeof patch.shardPct === 'number') {
+      progressState.shardPct = patch.shardPct;
+    }
+    if (typeof patch.statsPct === 'number') {
+      progressState.statsPct = patch.statsPct;
+    }
+    onProgress({
+      parsePct: progressState.parsePct,
+      shardPct: progressState.shardPct,
+      statsPct: progressState.statsPct,
+    });
   };
 
   const normalizeTs = (raw) => {
@@ -107,6 +126,26 @@ export async function parseJSONStream(
     return true;
   };
 
+  const shardTasks = [];
+
+  const appendShardSlice = (text) => {
+    if (!text) return;
+    const slice = `${text}\n`;
+    const task = (async () => {
+      try {
+        await appendToShard(slice);
+        const stats = getShardProgress();
+        const pct = totalBytes
+          ? Math.min(100, (stats.persistedBytes / totalBytes) * 100)
+          : progressState.shardPct;
+        updateProgress({ shardPct: pct });
+      } catch (err) {
+        console.error('Failed to append shard slice', err);
+      }
+    })();
+    shardTasks.push(task);
+  };
+
   const emitMessage = (msg, convTs) => {
     if (!shouldEmit(msg)) return;
     const payload = {
@@ -123,6 +162,7 @@ export async function parseJSONStream(
     if (typeof onMessage === 'function') {
       onMessage(payload);
     }
+    appendShardSlice(payload.content);
   };
 
   const processConversation = (conv) => {
@@ -369,7 +409,8 @@ export async function parseJSONStream(
       bytesRead += readChunk.byteLength;
       buffer += decoder.decode(readChunk, { stream: true });
       processBuffer(false);
-      updateProgress();
+      const pct = totalBytes ? Math.min(100, (bytesRead / totalBytes) * 100) : 0;
+      updateProgress({ parsePct: pct });
     }
 
     if (done) break;
@@ -380,9 +421,14 @@ export async function parseJSONStream(
   buffer += decoder.decode();
   processBuffer(true);
   finished = true;
-  if (typeof onProgress === 'function') {
-    onProgress({ parsePct: 100 });
+  await Promise.allSettled(shardTasks);
+  shardTasks.length = 0;
+  try {
+    await finalizeShard();
+  } catch (err) {
+    console.error('Failed to finalize shard', err);
   }
+  updateProgress({ parsePct: 100, shardPct: 100 });
 
   return { finished };
 }
