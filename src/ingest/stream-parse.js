@@ -140,25 +140,33 @@ export async function parseJSONStream(
     return true;
   };
 
-  const appendShardSlice = (text) => {
-    if (!text || aborted) return;
-    const slice = `${text}\n`;
-    const task = (async () => {
-      try {
-        await appendToShard(slice);
-        const stats = getShardProgress();
-        const pct = totalBytes
-          ? Math.min(100, (stats.persistedBytes / totalBytes) * 100)
-          : progressState.shardPct;
-        updateProgress({ shardPct: pct });
-      } catch (err) {
-        console.error('Failed to append shard slice', err);
-      }
-    })();
-    shardTasks.push(task);
-  };
+const shardTasks = []; 
+
+const appendShardSlice = (text) => {
+  if (!text || aborted) return; 
+
+  const slice = `${text}\n`;  
+  const task = (async () => {
+    try {
+      await appendToShard(slice);    
+
+      const stats = getShardProgress?.(); 
+      const pct = totalBytes
+        ? Math.min(100, (stats?.persistedBytes || 0) / totalBytes * 100)
+        : 0;
+
+      progressState.shardPct = pct;
+      updateProgress({ shardPct: pct });
+    } catch (err) {
+      console.error('Failed to append shard slice', err);
+    }
+  })();
+
+  shardTasks.push(task);
+};
 
   const emitMessage = (msg, convTs) => {
+
     if (aborted || !shouldEmit(msg)) return;
     const payload = {
       role: 'assistant',
