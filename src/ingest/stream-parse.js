@@ -1,5 +1,7 @@
 import { appendToShard, finalizeShard, getShardProgress } from './db.js';
 
+let shardTasks = [];
+
 export async function parseJSONStream(
   file,
   onMessage,
@@ -41,7 +43,9 @@ export async function parseJSONStream(
   let aborted = false;
 
   const signal = opts.signal;
-  const shardTasks = [];
+
+  await Promise.allSettled(shardTasks);
+  shardTasks.length = 0;
 
   const abortHandler = () => {
     if (aborted) return;
@@ -58,6 +62,8 @@ export async function parseJSONStream(
     shardPct: 0,
     statsPct: undefined,
   };
+
+  let bytesPersisted = 0;
 
   const updateProgress = (patch = {}) => {
     if (typeof onProgress !== 'function') return;
@@ -140,30 +146,28 @@ export async function parseJSONStream(
     return true;
   };
 
-const shardTasks = []; 
-
-const appendShardSlice = (text) => {
-  if (!text || aborted) return; 
-
-  const slice = `${text}\n`;  
-  const task = (async () => {
-    try {
-      await appendToShard(slice);    
-
-      const stats = getShardProgress?.(); 
-      const pct = totalBytes
-        ? Math.min(100, (stats?.persistedBytes || 0) / totalBytes * 100)
-        : 0;
-
-      progressState.shardPct = pct;
-      updateProgress({ shardPct: pct });
-    } catch (err) {
-      console.error('Failed to append shard slice', err);
-    }
-  })();
-
-  shardTasks.push(task);
-};
+  const appendShardSlice = (text) => {
+    if (!text || aborted) return;
+    const slice = `${text}\n`;
+    const task = (async () => {
+      try {
+        await appendToShard(slice);
+        const stats = typeof getShardProgress === 'function' ? getShardProgress() : null;
+        if (!stats || typeof stats.persistedBytes !== 'number') {
+          bytesPersisted += slice.length;
+        } else {
+          bytesPersisted = stats.persistedBytes;
+        }
+        const persisted = stats?.persistedBytes ?? bytesPersisted;
+        const pct = totalBytes ? Math.min(100, (persisted / totalBytes) * 100) : 0;
+        progressState.shardPct = pct;
+        updateProgress({ shardPct: pct });
+      } catch (err) {
+        console.error('Failed to append shard slice', err);
+      }
+    })();
+    shardTasks.push(task);
+  };
 
   const emitMessage = (msg, convTs) => {
 

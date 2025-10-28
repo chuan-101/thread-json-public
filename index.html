@@ -7,10 +7,8 @@
   <meta name="color-scheme" content="light"/>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
   <style>
-    /* =========================
-       主题与颜色变量（集中管理）
-       每套主题需给出：主色、强调色、背景、文本、卡片底、词云默认色
-       ========================= */
+    /* ---- 主题与颜色变量（集中管理） ----
+       每套主题需给出：主色、强调色、背景、文本、卡片底、词云默认色 */
     :root{
       --radius:16px; --pad:16px; --gap:16px;
       --shadow:0 6px 18px rgba(0,0,0,.06);
@@ -33,7 +31,7 @@
       --primary:#df8164; --accent:#e5c481; --bg:#abc799; --text:#0A0F14; --card-bg:#fbf9ec; 
     }
 
-    /* ============ 基础样式 ============ */
+    /* ---- 基础样式 ---- */
     *{box-sizing:border-box}
     body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:var(--text);background:var(--bg);}
     .wrap{max-width:980px;margin:0 auto;padding:24px;}
