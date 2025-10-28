@@ -38,6 +38,20 @@ export async function parseJSONStream(
   let rootType = null; // 'array' | 'object'
   let parseIndex = 0; // current index in buffer for parsing
   let finished = false;
+  let aborted = false;
+
+  const signal = opts.signal;
+  const shardTasks = [];
+
+  const abortHandler = () => {
+    if (aborted) return;
+    aborted = true;
+    try {
+      reader?.cancel?.();
+    } catch (err) {
+      // ignore cancellation failures
+    }
+  };
 
   const progressState = {
     parsePct: 0,
@@ -126,28 +140,34 @@ export async function parseJSONStream(
     return true;
   };
 
-  const shardTasks = [];
+const shardTasks = []; 
 
-  const appendShardSlice = (text) => {
-    if (!text) return;
-    const slice = `${text}\n`;
-    const task = (async () => {
-      try {
-        await appendToShard(slice);
-        const stats = getShardProgress();
-        const pct = totalBytes
-          ? Math.min(100, (stats.persistedBytes / totalBytes) * 100)
-          : progressState.shardPct;
-        updateProgress({ shardPct: pct });
-      } catch (err) {
-        console.error('Failed to append shard slice', err);
-      }
-    })();
-    shardTasks.push(task);
-  };
+const appendShardSlice = (text) => {
+  if (!text || aborted) return; 
+
+  const slice = `${text}\n`;  
+  const task = (async () => {
+    try {
+      await appendToShard(slice);    
+
+      const stats = getShardProgress?.(); 
+      const pct = totalBytes
+        ? Math.min(100, (stats?.persistedBytes || 0) / totalBytes * 100)
+        : 0;
+
+      progressState.shardPct = pct;
+      updateProgress({ shardPct: pct });
+    } catch (err) {
+      console.error('Failed to append shard slice', err);
+    }
+  })();
+
+  shardTasks.push(task);
+};
 
   const emitMessage = (msg, convTs) => {
-    if (!shouldEmit(msg)) return;
+
+    if (aborted || !shouldEmit(msg)) return;
     const payload = {
       role: 'assistant',
       name: msg.name || msg.author?.name || undefined,
@@ -392,17 +412,39 @@ export async function parseJSONStream(
     }
   };
 
-  while (true) {
+  if (signal?.aborted) {
+    abortHandler();
+  } else if (signal) {
+    signal.addEventListener('abort', abortHandler, { once: true });
+  }
+
+  let readError = null;
+
+  while (!aborted) {
     let readChunk;
     let done = false;
-    if (byob) {
-      const { value, done: readerDone } = await reader.read(chunkBuffer);
-      readChunk = value;
-      done = readerDone;
-    } else {
-      const res = await reader.read();
-      readChunk = res.value;
-      done = res.done;
+    try {
+      if (byob) {
+        const { value, done: readerDone } = await reader.read(chunkBuffer);
+        readChunk = value;
+        done = readerDone;
+      } else {
+        const res = await reader.read();
+        readChunk = res.value;
+        done = res.done;
+      }
+    } catch (err) {
+      if (err?.name === 'AbortError') {
+        aborted = true;
+      } else {
+        readError = err;
+      }
+      break;
+    }
+
+    if (signal?.aborted) {
+      abortHandler();
+      break;
     }
 
     if (readChunk && readChunk.byteLength) {
@@ -418,17 +460,28 @@ export async function parseJSONStream(
 
   reader.releaseLock?.();
 
-  buffer += decoder.decode();
-  processBuffer(true);
-  finished = true;
-  await Promise.allSettled(shardTasks);
-  shardTasks.length = 0;
-  try {
-    await finalizeShard();
-  } catch (err) {
-    console.error('Failed to finalize shard', err);
-  }
-  updateProgress({ parsePct: 100, shardPct: 100 });
+  signal?.removeEventListener?.('abort', abortHandler);
 
-  return { finished };
+  if (readError) {
+    throw readError;
+  }
+
+  if (!aborted) {
+    buffer += decoder.decode();
+    processBuffer(true);
+    finished = true;
+    await Promise.allSettled(shardTasks);
+    shardTasks.length = 0;
+    try {
+      await finalizeShard();
+    } catch (err) {
+      console.error('Failed to finalize shard', err);
+    }
+    updateProgress({ parsePct: 100, shardPct: 100 });
+  } else {
+    await Promise.allSettled(shardTasks);
+    shardTasks.length = 0;
+  }
+
+  return { finished, aborted };
 }
