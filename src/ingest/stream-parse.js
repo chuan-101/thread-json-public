@@ -423,19 +423,23 @@ export async function parseJSONStream(
 
   let readError = null;
 
-  while (!aborted) {
-    let readChunk;
-    let done = false;
-    try {
-      if (byob) {
-        const { value, done: readerDone } = await reader.read(chunkBuffer);
-        readChunk = value;
-        done = readerDone;
-      } else {
-        const res = await reader.read();
-        readChunk = res.value;
-        done = res.done;
+while (!aborted) {
+  let readChunk;
+  let done = false;
+  try {
+    if (byob) {
+      if (!chunkBuffer || chunkBuffer.byteLength === 0) {
+        chunkBuffer = new Uint8Array(chunkSize);
       }
+      const { value, done: readerDone } = await reader.read(chunkBuffer);
+      readChunk = value;
+      done = readerDone;
+      chunkBuffer = new Uint8Array(chunkSize);
+    } else {
+      const res = await reader.read();
+      readChunk = res.value;
+      done = res.done;
+    }
     } catch (err) {
       if (err?.name === 'AbortError') {
         aborted = true;
