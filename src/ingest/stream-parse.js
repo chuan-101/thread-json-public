@@ -170,6 +170,7 @@ export async function parseJSONStream(
   };
 
   const emitMessage = (msg, convTs) => {
+
     if (aborted || !shouldEmit(msg)) return;
     const payload = {
       role: 'assistant',
