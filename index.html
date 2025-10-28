@@ -7,10 +7,8 @@
   <meta name="color-scheme" content="light"/>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
   <style>
-    /* =========================
-       主题与颜色变量（集中管理）
-       每套主题需给出：主色、强调色、背景、文本、卡片底、词云默认色
-       ========================= */
+    /* ---- 主题与颜色变量（集中管理） ----
+       每套主题需给出：主色、强调色、背景、文本、卡片底、词云默认色 */
     :root{
       --radius:16px; --pad:16px; --gap:16px;
       --shadow:0 6px 18px rgba(0,0,0,.06);
@@ -33,7 +31,7 @@
       --primary:#df8164; --accent:#e5c481; --bg:#abc799; --text:#0A0F14; --card-bg:#fbf9ec; 
     }
 
-    /* ============ 基础样式 ============ */
+    /* ---- 基础样式 ---- */
     *{box-sizing:border-box}
     body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:var(--text);background:var(--bg);}
     .wrap{max-width:980px;margin:0 auto;padding:24px;}
@@ -201,7 +199,9 @@
     </footer>
   </div>
 
-  <script>
+  <script type="module">
+    import { parseJSONStream } from './src/ingest/stream-parse.js';
+    import { clearAll } from './src/ingest/db.js';
     // —— 主题下拉 —— //
     const themeSel = document.getElementById('theme');
     themeSel.addEventListener('change', ()=> {
@@ -220,25 +220,119 @@
     // —— 进度条占位：接入解析/统计后在此更新 —— //
     const p1=document.getElementById('p-parse'), p2=document.getElementById('p-shard'), p3=document.getElementById('p-stat');
     const setProgress=(el,val)=>{ el.style.width=Math.max(0,Math.min(100,val))+'%'; };
+    const resetProgressBars = () => {
+      setProgress(p1,0);
+      setProgress(p2,0);
+      setProgress(p3,0);
+    };
 
-    // —— 文件选择与开始/中断（占位） —— //
+    // —— 文件选择与开始/中断 —— //
     const fileInput=document.getElementById('file');
     const fileNameSpan = document.getElementById('file-name');
+    const parseBtn = document.getElementById('btn-parse');
+    const cancelBtn = document.getElementById('btn-cancel');
+    const parseBtnLabel = parseBtn.textContent;
 
-fileInput.addEventListener('change', () => {
-  const fileName = fileInput.files?.[0]?.name || '';
-  fileNameSpan.textContent = fileName ? `已选择：${fileName}` : '';
-});
-    document.getElementById('btn-parse').addEventListener('click',()=>{
-      if(!fileInput.files?.[0]){ alert('请选择 JSON 文件'); return; }
-      // TODO: 接入 File.stream()+TextDecoder → 分片入库（IndexedDB）→ Worker 统计
-      setProgress(p1,30); setProgress(p2,10); setProgress(p3,0);
-      setTimeout(()=>{ setProgress(p1,100); setProgress(p2,60); },500);
-      setTimeout(()=>{ setProgress(p2,100); setProgress(p3,100); },1200);
+    let currentRunPromise = null;
+    let currentController = null;
+    let cancelRequested = false;
+
+    const updateProgressBars = ({ parsePct, shardPct, statsPct }) => {
+      if (typeof parsePct === 'number') setProgress(p1, parsePct);
+      if (typeof shardPct === 'number') setProgress(p2, shardPct);
+      if (typeof statsPct === 'number') setProgress(p3, statsPct);
+    };
+
+    const resetUiState = () => {
+      resetProgressBars();
+      parseBtn.disabled = false;
+      parseBtn.textContent = parseBtnLabel;
+      cancelBtn.disabled = false;
+    };
+
+    resetProgressBars();
+
+    fileInput.addEventListener('change', () => {
+      const fileName = fileInput.files?.[0]?.name || '';
+      fileNameSpan.textContent = fileName ? `已选择：${fileName}` : '';
     });
-    document.getElementById('btn-cancel').addEventListener('click',()=>{
-      // TODO: 终止解析/worker、清空状态与进度
-      setProgress(p1,0); setProgress(p2,0); setProgress(p3,0);
+    parseBtn.addEventListener('click', async ()=>{
+      if(currentRunPromise){ return; }
+      if(!fileInput.files?.[0]){ alert('请选择 JSON 文件'); return; }
+
+      cancelRequested = false;
+      resetProgressBars();
+      parseBtn.disabled = true;
+      parseBtn.textContent = '解析中…';
+      cancelBtn.disabled = false;
+
+      const file = fileInput.files[0];
+      const assistName = (document.getElementById('assist-filter')?.value || '').trim();
+      currentController = new AbortController();
+
+      const run = (async () => {
+        try {
+          await parseJSONStream(
+            file,
+            (msg) => {
+              if (cancelRequested) return;
+              // TODO: 后续接入统计逻辑
+            },
+            (progress) => {
+              if (cancelRequested) return;
+              updateProgressBars(progress || {});
+            },
+            { assistName, signal: currentController.signal },
+          );
+        } catch (err) {
+          if (err?.name !== 'AbortError') {
+            console.error('解析过程中出错', err);
+          }
+        } finally {
+          currentController = null;
+          currentRunPromise = null;
+          parseBtn.disabled = false;
+          parseBtn.textContent = parseBtnLabel;
+          if (cancelRequested) {
+            resetProgressBars();
+          }
+        }
+      })();
+
+      currentRunPromise = run;
+      try {
+        await run;
+      } catch (err) {
+        if (err?.name !== 'AbortError') {
+          console.error('解析结束时出错', err);
+        }
+      }
+    });
+    cancelBtn.addEventListener('click', async ()=>{
+      cancelRequested = true;
+      if(currentController && !currentController.signal.aborted){
+        currentController.abort();
+      }
+
+      try {
+        await currentRunPromise;
+      } catch (err) {
+        if (err?.name !== 'AbortError') {
+          console.error('取消过程中出错', err);
+        }
+      } finally {
+        currentRunPromise = null;
+        currentController = null;
+      }
+
+      try {
+        await clearAll();
+      } catch (err) {
+        console.error('清空分片失败', err);
+      }
+
+      resetUiState();
+      cancelRequested = false;
     });
 
     // —— 时间轴摘要占位 —— //
