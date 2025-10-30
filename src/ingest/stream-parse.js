@@ -438,10 +438,10 @@ while (!aborted) {
     } else {
       const res = await reader.read();
       readChunk = res.value;
-      done = res.done;
+done = res.done;
     }
-    } catch (err) {
-      if (err?.name === 'AbortError') {
+  } catch (err) {
+    if (err?.name === 'AbortError') {
         aborted = true;
       } else {
         readError = err;
