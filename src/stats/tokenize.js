@@ -46,11 +46,10 @@ export function createStopwordSet(extra = []) {
   return set;
 }
 
-export function tokenize(text, stopwordSet = createStopwordSet()) {
-  if (!text) return [];
+export function* tokenizeIter(text, stopwordSet = createStopwordSet()) {
+  if (!text) return;
   const stopwords = stopwordSet instanceof Set ? stopwordSet : createStopwordSet(stopwordSet);
   const lower = String(text).toLowerCase();
-  const tokens = [];
 
   for (const match of lower.matchAll(TOKEN_REGEX)) {
     const token = match[0];
@@ -66,10 +65,13 @@ export function tokenize(text, stopwordSet = createStopwordSet()) {
         continue; // drop long numeric sequences
       }
     }
-    tokens.push(token);
+    yield token;
   }
+}
 
-  return tokens;
+export function tokenize(text, stopwordSet = createStopwordSet()) {
+  if (!text) return [];
+  return Array.from(tokenizeIter(text, stopwordSet));
 }
 
 export { BUILT_IN_STOPWORDS };

@@ -264,7 +264,7 @@
             }
             partials.push({ ...result, shardId: shard.id });
             completed += 1;
-            updateProgressBars({ statsPct: Math.min(100, (completed / shards.length) * 100) });
+            updateProgressBars({ statsPct: Math.min(50, (completed / shards.length) * 50) });
             return null;
           });
           await Promise.all(tasks);
@@ -278,32 +278,40 @@
         statsState.candidates = merged.candidates;
         statsState.totalTokens = merged.totalTokens;
 
+        updateProgressBars({ statsPct: statsState.candidates.length ? 50 : 100 });
+
         if (!statsState.candidates.length) {
           statsState.counts = new Map();
           statsState.sortedCandidates = [];
           statsState.top10 = [];
-          updateProgressBars({ statsPct: 100 });
           refreshCloud();
           return;
         }
-
-        const stopwordSet = createStopwordSet(stopwords);
-        const iterTokens = async function* iterTokens(shardId) {
-          const text = await readShardText(shardId);
-          if (!text) return;
-          const masked = applyMask(text, mask);
-          const tokens = tokenize(masked, stopwordSet);
-          for (const token of tokens) {
-            yield token;
-          }
-        };
-        iterTokens.shardIds = shards.map((s) => s.id);
 
         const now = typeof performance !== 'undefined' && typeof performance.now === 'function'
           ? () => performance.now()
           : () => Date.now();
         const recountStart = now();
-        const recountMap = await exactRecount(merged.candidates, iterTokens);
+        const iterShardText = async (shardId) => {
+          const text = await readShardText(shardId);
+          if (!text) return '';
+          return applyMask(text, mask);
+        };
+        iterShardText.shardIds = shards.map((s) => s.id);
+        iterShardText.stopwords = stopwordPayload;
+
+        const recountMap = await exactRecount(
+          merged.candidates,
+          iterShardText,
+          ({ doneShards, totalShards }) => {
+            const phasePct = totalShards ? 50 + (doneShards / totalShards) * 50 : 100;
+            updateProgressBars({ statsPct: Math.min(100, phasePct) });
+            if (DEBUG_STATS) {
+              const elapsedMs = Math.round(now() - recountStart);
+              console.debug('[stats]', { phase: 'recount', doneShards, totalShards, elapsedMs });
+            }
+          },
+        );
         const recountEnd = now();
         statsState.recountTimeMs = recountEnd - recountStart;
         statsState.counts = recountMap;
