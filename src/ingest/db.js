@@ -178,6 +178,39 @@ export async function listShards() {
   return results;
 }
 
+export async function getShardRecord(shardId) {
+  if (shardId == null) return null;
+  const db = await ensureDb();
+  if (!db) return null;
+  const tx = db.transaction(STORE_NAME, 'readonly');
+  const store = tx.objectStore(STORE_NAME);
+  const record = await wrapRequest(store.get(shardId));
+  await wrapTransaction(tx);
+  if (!record) return null;
+  return { id: shardId, ...record };
+}
+
+export async function readShardText(shardId) {
+  const record = await getShardRecord(shardId);
+  if (!record) return '';
+  const blob = record.textBlob;
+  if (!blob) return '';
+  if (typeof blob.text === 'function') {
+    try {
+      return await blob.text();
+    } catch (err) {
+      console.error('Failed to read shard text', err);
+      return '';
+    }
+  }
+  try {
+    return String(await blob);
+  } catch (err) {
+    console.error('Failed to coerce shard text', err);
+    return '';
+  }
+}
+
 export async function clearAll() {
   if (!hasIndexedDB()) return;
   resetBuffer();

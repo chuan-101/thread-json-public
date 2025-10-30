@@ -201,12 +201,140 @@
 
   <script type="module">
     import { parseJSONStream } from './src/ingest/stream-parse.js';
-    import { clearAll } from './src/ingest/db.js';
+    import { clearAll, listShards, readShardText } from './src/ingest/db.js';
+    import { WorkerPool } from './src/workers/pool.js';
+    import { mergePartials, exactRecount } from './src/stats/merge.js';
+    import { tokenize, createStopwordSet } from './src/stats/tokenize.js';
+    import { applyMask } from './src/stats/mask.js';
     // —— 主题下拉 —— //
     const themeSel = document.getElementById('theme');
     themeSel.addEventListener('change', ()=> {
       document.documentElement.setAttribute('data-theme', themeSel.value);
     });
+
+    async function runStatsPipeline({ stopwords, mask }) {
+      if (cancelRequested) return;
+      try {
+        let shards = [];
+        try {
+          shards = await listShards();
+        } catch (err) {
+          console.error('读取分片列表失败', err);
+          return;
+        }
+        if (cancelRequested) return;
+        if (!Array.isArray(shards) || !shards.length) {
+          updateProgressBars({ statsPct: 100 });
+          refreshCloud();
+          return;
+        }
+
+        updateProgressBars({ statsPct: 0 });
+
+        const workerUrl = new URL('./src/workers/shard-worker.js', import.meta.url).href;
+        let poolSize = 4;
+        if (typeof navigator !== 'undefined' && typeof navigator.hardwareConcurrency === 'number') {
+          const suggested = Math.max(1, Math.floor(navigator.hardwareConcurrency - 1));
+          poolSize = Math.min(4, Math.max(suggested, 1));
+        }
+        poolSize = Math.max(1, Math.min(poolSize, shards.length));
+        if (poolSize < 3 && shards.length >= 3) {
+          poolSize = 3;
+        }
+
+        const pool = new WorkerPool(poolSize, workerUrl);
+        const partials = [];
+        const stopwordPayload = Array.isArray(stopwords) ? stopwords : Array.from(stopwords || []);
+        let completed = 0;
+
+        try {
+          const tasks = shards.map(async (shard) => {
+            if (cancelRequested) return null;
+            const text = await readShardText(shard.id);
+            if (cancelRequested) return null;
+            const result = await pool.run({
+              shardId: shard.id,
+              text,
+              stopwords: stopwordPayload,
+              mask,
+            });
+            if (cancelRequested) return null;
+            if (result?.error) {
+              throw new Error(result.error.message || 'Worker 计算失败');
+            }
+            partials.push({ ...result, shardId: shard.id });
+            completed += 1;
+            updateProgressBars({ statsPct: Math.min(100, (completed / shards.length) * 100) });
+            return null;
+          });
+          await Promise.all(tasks);
+        } finally {
+          await pool.terminate();
+        }
+
+        if (cancelRequested) return;
+
+        const merged = mergePartials(partials);
+        statsState.candidates = merged.candidates;
+        statsState.totalTokens = merged.totalTokens;
+
+        if (!statsState.candidates.length) {
+          statsState.counts = new Map();
+          statsState.sortedCandidates = [];
+          statsState.top10 = [];
+          updateProgressBars({ statsPct: 100 });
+          refreshCloud();
+          return;
+        }
+
+        const stopwordSet = createStopwordSet(stopwords);
+        const iterTokens = async function* iterTokens(shardId) {
+          const text = await readShardText(shardId);
+          if (!text) return;
+          const masked = applyMask(text, mask);
+          const tokens = tokenize(masked, stopwordSet);
+          for (const token of tokens) {
+            yield token;
+          }
+        };
+        iterTokens.shardIds = shards.map((s) => s.id);
+
+        const now = typeof performance !== 'undefined' && typeof performance.now === 'function'
+          ? () => performance.now()
+          : () => Date.now();
+        const recountStart = now();
+        const recountMap = await exactRecount(merged.candidates, iterTokens);
+        const recountEnd = now();
+        statsState.recountTimeMs = recountEnd - recountStart;
+        statsState.counts = recountMap;
+        statsState.sortedCandidates = Array.from(recountMap.entries()).sort((a, b) => {
+          if (b[1] !== a[1]) return b[1] - a[1];
+          return a[0].localeCompare(b[0]);
+        });
+        updateProgressBars({ statsPct: 100 });
+
+        refreshCloud();
+
+        if (DEBUG_STATS) {
+          console.debug('[stats]', {
+            totalTokens: statsState.totalTokens,
+            distinctCandidates: statsState.counts.size,
+            recountTimeMs: Math.round(statsState.recountTimeMs),
+          });
+        }
+      } catch (err) {
+        if (err && typeof err === 'object') {
+          err.__stats = true;
+        }
+        statsState.counts = new Map();
+        statsState.sortedCandidates = [];
+        statsState.top10 = [];
+        statsState.totalTokens = 0;
+        statsState.recountTimeMs = 0;
+        refreshCloud();
+        throw err;
+      }
+    }
 
     // —— 标题替换（仅替换“GPT”段） —— //
     const titleInput = document.getElementById('title-input');
@@ -225,6 +353,42 @@
       setProgress(p2,0);
       setProgress(p3,0);
     };
+
+    const stopwordsInput = document.getElementById('stopwords');
+    const maskInput = document.getElementById('mask');
+
+    const state = {
+      stopwords: new Set(),
+      mask: false,
+    };
+
+    const statsState = {
+      counts: new Map(),
+      sortedCandidates: [],
+      candidates: [],
+      totalTokens: 0,
+      recountTimeMs: 0,
+      top10: [],
+    };
+
+    const DEBUG_STATS = false;
+
+    const parseStopwordInput = (value) => {
+      if (!value) return [];
+      return value
+        .replace(/[，、]/g, ' ')
+        .split(/\s+/)
+        .map((v) => v.trim().toLowerCase())
+        .filter(Boolean);
+    };
+
+    const updateStopwordStateFromInput = () => {
+      const entries = parseStopwordInput(stopwordsInput?.value || '');
+      state.stopwords = new Set(entries);
+      return entries;
+    };
+
+    const getStopwordArray = () => Array.from(state.stopwords);
 
     // —— 文件选择与开始/中断 —— //
     const fileInput=document.getElementById('file');
@@ -262,6 +426,15 @@
 
       cancelRequested = false;
       resetProgressBars();
+      updateStopwordStateFromInput();
+      state.mask = !!maskInput?.checked;
+      statsState.counts.clear();
+      statsState.sortedCandidates = [];
+      statsState.candidates = [];
+      statsState.totalTokens = 0;
+      statsState.recountTimeMs = 0;
+      statsState.top10 = [];
+      refreshCloud();
       parseBtn.disabled = true;
       parseBtn.textContent = '解析中…';
       cancelBtn.disabled = false;
@@ -272,11 +445,10 @@
 
       const run = (async () => {
         try {
-          await parseJSONStream(
+          const parseResult = await parseJSONStream(
             file,
-            (msg) => {
-              if (cancelRequested) return;
-              // TODO: 后续接入统计逻辑
+            () => {
+              /* 消息级聚合将在后续任务接入 */
             },
             (progress) => {
               if (cancelRequested) return;
@@ -284,9 +456,13 @@
             },
             { assistName, signal: currentController.signal },
           );
+          if (!cancelRequested && parseResult?.aborted !== true) {
+            await runStatsPipeline({ stopwords: getStopwordArray(), mask: state.mask });
+          }
         } catch (err) {
           if (err?.name !== 'AbortError') {
-            console.error('解析过程中出错', err);
+            const label = err?.__stats ? '统计计算失败' : '解析过程中出错';
+            console.error(label, err);
           }
         } finally {
           currentController = null;
@@ -331,6 +507,14 @@
         console.error('清空分片失败', err);
       }
 
+      statsState.counts.clear();
+      statsState.sortedCandidates = [];
+      statsState.candidates = [];
+      statsState.totalTokens = 0;
+      statsState.recountTimeMs = 0;
+      statsState.top10 = [];
+      refreshCloud();
+
       resetUiState();
       cancelRequested = false;
     });
@@ -347,6 +531,13 @@
     // —— 词云渲染占位（接入统计后调用） —— //
     function renderCloud(words){
       const host=document.getElementById('cloud'); host.innerHTML='';
+      if(!Array.isArray(words) || !words.length){
+        const placeholder=document.createElement('span');
+        placeholder.className='muted';
+        placeholder.textContent='暂无统计';
+        host.appendChild(placeholder);
+        return;
+      }
       words.forEach(w=>{
         const el=document.createElement('span');
         el.textContent=w.text;
@@ -357,6 +548,36 @@
       });
     }
     // renderCloud([{text:'Syzygy',weight:1},{text:'听话',weight:.85},{text:'现在',weight:.7},{text:'抱紧',weight:.6}]);
+
+    function refreshCloud(){
+      const sorted = statsState.sortedCandidates || [];
+      if (!sorted.length) {
+        statsState.top10 = [];
+        renderCloud([]);
+        return;
+      }
+      const displayStopwords = new Set(parseStopwordInput(stopwordsInput?.value || ''));
+      const filtered = [];
+      for (const [token, count] of sorted) {
+        if (displayStopwords.has(token)) continue;
+        filtered.push({ token, count });
+        if (filtered.length >= 10) break;
+      }
+      if (!filtered.length) {
+        statsState.top10 = [];
+        renderCloud([]);
+        return;
+      }
+      const topCount = filtered[0]?.count || 1;
+      const words = filtered.map(({ token, count }) => ({
+        text: token,
+        weight: topCount ? count / topCount : 0,
+        count,
+        pct: statsState.totalTokens ? count / statsState.totalTokens : 0,
+      }));
+      statsState.top10 = words;
+      renderCloud(words.map(({ text, weight }) => ({ text, weight })));
+    }
 
     // —— 保存为图片（防截断版） —— //
 document.getElementById('btn-save').addEventListener('click', async ()=>{
@@ -431,12 +652,20 @@ root.classList.remove('printing');
 });
 
     // —— 停用词与脱敏状态（统计时读取） —— //
-    const state={ stopwords:new Set(), mask:false };
-    document.getElementById('stopwords').addEventListener('blur', e=>{
-      const raw=(e.target.value||'').replace(/[，、]/g,' ').split(/\s+/).filter(Boolean);
-      state.stopwords=new Set(raw);
+    stopwordsInput.addEventListener('input', () => {
+      updateStopwordStateFromInput();
+      refreshCloud();
     });
-    document.getElementById('mask').addEventListener('change', e=> state.mask=!!e.target.checked);
+    stopwordsInput.addEventListener('change', () => {
+      updateStopwordStateFromInput();
+      refreshCloud();
+    });
+    maskInput.addEventListener('change', (e)=> {
+      state.mask = !!e.target.checked;
+    });
+    updateStopwordStateFromInput();
+    state.mask = !!maskInput?.checked;
+    refreshCloud();
 
     // —— 范围切换占位 —— //
     document.querySelectorAll('input[name="scope"]').forEach(r=>{
