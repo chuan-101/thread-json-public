@@ -204,6 +204,7 @@
     import { clearAll, listShards, readShardText } from './src/ingest/db.js';
     import { WorkerPool } from './src/workers/pool.js';
     import { mergePartials, exactRecount } from './src/stats/merge.js';
+    import { tokenize, createStopwordSet } from './src/stats/tokenize.js';
     import { applyMask } from './src/stats/mask.js';
     // —— 主题下拉 —— //
     const themeSel = document.getElementById('theme');
