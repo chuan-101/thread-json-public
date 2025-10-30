@@ -1,11 +1,42 @@
 import { tokenize, createStopwordSet } from '../stats/tokenize.js';
-import { applyMask } from '../stats/mask.js';
 
 const MG_K = 2000;
 const CMS_DEPTH = 4;
 const CMS_WIDTH = 1 << 18; // 262144
 const CMS_MASK = CMS_WIDTH - 1;
 const CMS_SEEDS = [0x1b873593, 0xcc9e2d51, 0x9e3779b1, 0x85ebca6b];
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|\[\]\\]/g, '\\$&');
+}
+
+function applyMask(text, mask) {
+  if (!text || !mask) return text;
+  let output = text;
+  const entries = Array.isArray(mask)
+    ? mask
+    : typeof mask === 'object'
+    ? Object.entries(mask)
+    : [];
+
+  entries.forEach((entry) => {
+    if (!entry) return;
+    let source;
+    let replacement;
+    if (Array.isArray(entry)) {
+      [source, replacement] = entry;
+    } else if (entry && typeof entry === 'object') {
+      source = entry.from ?? entry.search;
+      replacement = entry.to ?? entry.replace ?? '';
+    }
+    if (!source || typeof source !== 'string') return;
+    const replaceWith = replacement == null ? '' : String(replacement);
+    const pattern = new RegExp(escapeRegExp(source), 'g');
+    output = output.replace(pattern, replaceWith);
+  });
+
+  return output;
+}
 
 function misraGries(tokens, k) {
   const counters = new Map();
