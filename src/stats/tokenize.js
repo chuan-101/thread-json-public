@@ -10,6 +10,7 @@ export const FIXED_STOPWORDS = new Set([
 
 const CJK_CLASS = '\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}';
 const TOKEN_REGEX = new RegExp(`[${CJK_CLASS}]|[a-z0-9_]+`, 'gu');
+const CJK_TOKEN_REGEX = new RegExp(`^[${CJK_CLASS}]+$`, 'u');
 const LATIN_REGEX = /^[a-z0-9_]+$/;
 const DIGIT_REGEX = /^\d+$/;
 const SINGLE_LATIN_REGEX = /^[a-z_]$/;
@@ -44,4 +45,17 @@ export function* tokenizeIter(text) {
 export function tokenize(text) {
   if (!text) return [];
   return Array.from(tokenizeIter(text));
+}
+
+export function inferTokenScript(token) {
+  if (typeof token !== 'string' || token.length === 0) {
+    return 'other';
+  }
+  if (LATIN_REGEX.test(token)) {
+    return 'latin';
+  }
+  if (CJK_TOKEN_REGEX.test(token)) {
+    return 'cjk';
+  }
+  return 'other';
 }
