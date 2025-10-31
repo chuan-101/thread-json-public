@@ -1,7 +1,7 @@
 import { WorkerPool } from '../workers/pool.js';
 
 const CMS_SEEDS = [0x1b873593, 0xcc9e2d51, 0x9e3779b1, 0x85ebca6b];
-const RECOUNT_MAX_CHUNK_CHARS = 512_000; // ~1MB of UTF-16 text
+const RECOUNT_MAX_CHUNK_CHARS = 1_048_576; // ~2MB of UTF-16 text
 
 function hashToken(token, seed) {
   let hash = seed >>> 0;
@@ -96,16 +96,6 @@ export function mergePartials(partials, K = 3000) {
   return { candidates: topK, totalTokens };
 }
 
-function toStopwordArray(stopwords) {
-  if (!stopwords) return [];
-  if (Array.isArray(stopwords)) return stopwords;
-  if (stopwords instanceof Set) return Array.from(stopwords);
-  if (typeof stopwords === 'string') {
-    return stopwords.split(/[\s,]+/u).filter(Boolean);
-  }
-  return [];
-}
-
 function* chunkString(text, chunkSize = RECOUNT_MAX_CHUNK_CHARS) {
   if (!text) return;
   const str = String(text);
@@ -118,16 +108,64 @@ function* chunkString(text, chunkSize = RECOUNT_MAX_CHUNK_CHARS) {
   }
 }
 
+function* chunkMessages(messages, chunkSize = RECOUNT_MAX_CHUNK_CHARS) {
+  if (!Array.isArray(messages) || !messages.length) return;
+  let bucket = [];
+  let bucketChars = 0;
+  for (const msg of messages) {
+    const text = msg && typeof msg.text === 'string' ? msg.text : '';
+    if (!text) continue;
+    const entryChars = text.length + 1;
+    if (bucket.length && bucketChars + entryChars > chunkSize) {
+      yield bucket;
+      bucket = [];
+      bucketChars = 0;
+    }
+    bucket.push(msg);
+    bucketChars += entryChars;
+  }
+  if (bucket.length) {
+    yield bucket;
+  }
+}
+
 async function* iterateShardChunks(iterShardText, shardId) {
   const result = await iterShardText(shardId);
+  if (!result) return;
+  if (Array.isArray(result.messages)) {
+    for (const chunk of chunkMessages(result.messages)) {
+      if (!chunk || !chunk.length) continue;
+      yield { messages: chunk };
+    }
+    return;
+  }
   if (typeof result === 'string') {
-    yield* chunkString(result);
+    for (const chunk of chunkString(result)) {
+      yield { text: chunk };
+    }
+    return;
+  }
+  if (result && typeof result.text === 'string') {
+    for (const chunk of chunkString(result.text)) {
+      yield { text: chunk };
+    }
+    return;
+  }
+  if (result && Array.isArray(result.text)) {
+    for (const piece of result.text) {
+      if (!piece) continue;
+      for (const chunk of chunkString(piece)) {
+        yield { text: chunk };
+      }
+    }
     return;
   }
   if (result && typeof result[Symbol.asyncIterator] === 'function') {
     for await (const piece of result) {
       if (!piece) continue;
-      yield* chunkString(piece);
+      for (const chunk of chunkString(piece)) {
+        yield { text: chunk };
+      }
     }
   }
 }
@@ -148,13 +186,15 @@ function pickPoolSize(totalShards) {
   return poolSize;
 }
 
-export async function exactRecount(candidates, iterShardText, onProgress) {
+export async function exactRecount(candidates, iterShardText, onProgress, options = {}) {
   if (!Array.isArray(candidates) || !candidates.length) {
     return new Map();
   }
   if (typeof iterShardText !== 'function') {
     return new Map();
   }
+
+  const shouldAbort = typeof options?.shouldAbort === 'function' ? options.shouldAbort : null;
 
   let shardIds = [];
   if (Array.isArray(iterShardText.shardIds)) {
@@ -174,28 +214,47 @@ export async function exactRecount(candidates, iterShardText, onProgress) {
     return new Map();
   }
 
-  const stopwordPayload = toStopwordArray(iterShardText.stopwords);
   const workerUrl = new URL('../workers/recount-worker.js', import.meta.url).href;
   const pool = new WorkerPool(pickPoolSize(shardIds.length), workerUrl);
   const globalCounts = new Map();
   const candidateSet = new Set(uniqueCandidates);
+  let aborted = false;
 
   try {
     let doneShards = 0;
     for (const shardId of shardIds) {
+      if (shouldAbort?.()) {
+        aborted = true;
+        break;
+      }
       const shardCounts = new Map();
       let shardTokensSeen = 0;
 
       for await (const chunk of iterateShardChunks(iterShardText, shardId)) {
+        if (shouldAbort?.()) {
+          aborted = true;
+          break;
+        }
         if (!chunk) continue;
-        const result = await pool.run({
+        const payload = {
           shardId,
-          text: chunk,
           candidates: uniqueCandidates,
-          stopwords: stopwordPayload,
-        });
+          cutoff: iterShardText.cutoff,
+          mask: iterShardText.mask,
+        };
+        if (typeof chunk.text === 'string') {
+          payload.text = chunk.text;
+        }
+        if (Array.isArray(chunk.messages)) {
+          payload.messages = chunk.messages;
+        }
+        const result = await pool.run(payload);
         if (result?.error) {
           throw new Error(result.error.message || 'Recount worker failed');
+        }
+        if (shouldAbort?.()) {
+          aborted = true;
+          break;
         }
         shardTokensSeen += Number(result?.tokensSeen) || 0;
         const pairs = Array.isArray(result?.counts) ? result.counts : [];
@@ -208,13 +267,18 @@ export async function exactRecount(candidates, iterShardText, onProgress) {
         }
       }
 
+      if (aborted) {
+        break;
+      }
       for (const [token, count] of shardCounts.entries()) {
         if (!count) continue;
         globalCounts.set(token, (globalCounts.get(token) || 0) + count);
       }
 
       doneShards += 1;
-      onProgress?.({ doneShards, totalShards: shardIds.length, shardTokensSeen });
+      if (typeof onProgress === 'function') {
+        await onProgress({ doneShards, totalShards: shardIds.length, shardTokensSeen });
+      }
     }
   } finally {
     await pool.terminate();
