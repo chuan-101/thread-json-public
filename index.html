@@ -57,6 +57,12 @@
     .cloud span{display:inline-block;padding:2px 4px;border-radius:6px;color:var(--primary);font-weight:800}
     .cloud span[data-w]{opacity: calc(.65 + (.35 * var(--w,1)));}
 
+    .text-toggle{display:flex;gap:8px;align-items:center;}
+    .text-toggle button{border:0;background:none;padding:0;font:inherit;color:var(--text);opacity:.65;cursor:pointer;}
+    .text-toggle button:hover,.text-toggle button:focus-visible{opacity:1;text-decoration:underline;}
+    .text-toggle button.active{font-weight:600;opacity:1;}
+    .text-toggle span{opacity:.4;}
+
     .table-scroll{overflow:auto;}
     table.data-table{width:100%;border-collapse:collapse;min-width:320px;}
     table.data-table thead th{padding:8px 12px;text-align:left;font-weight:600;font-size:13px;border-bottom:1px solid rgba(0,0,0,.12);}
@@ -164,6 +170,11 @@
       <!-- 词云 -->
       <section class="card stack" id="card-cloud">
         <div class="section-title">Top10 词云</div>
+        <div class="text-toggle small" id="cloud-toggle" role="group" aria-label="词云视图切换">
+          <button type="button" data-mode="phrases" class="active" aria-pressed="true">Phrases (default)</button>
+          <span>/</span>
+          <button type="button" data-mode="words" aria-pressed="false">Words only (debug)</button>
+        </div>
         <div class="cloud" id="cloud">
           <!-- 占位渲染 -->
           <span style="font-size:36px;" data-w="1"  style="--w:1">Syzygy</span>
@@ -449,6 +460,7 @@
       totalTokens: 0,
       recountTimeMs: 0,
       top10: [],
+      cloudMode: 'phrases',
     };
 
     const yearlyState = {
@@ -463,6 +475,7 @@
     const parseBtn = document.getElementById('btn-parse');
     const cancelBtn = document.getElementById('btn-cancel');
     const parseBtnLabel = parseBtn.textContent;
+    const cloudToggle = document.getElementById('cloud-toggle');
 
     let currentRunPromise = null;
     let currentController = null;
@@ -481,6 +494,34 @@
       parseBtn.textContent = parseBtnLabel;
       cancelBtn.disabled = false;
     };
+
+    function updateCloudToggleButtons(mode) {
+      if (!cloudToggle) return;
+      const nextMode = mode === 'words' ? 'words' : 'phrases';
+      const buttons = cloudToggle.querySelectorAll('button[data-mode]');
+      buttons.forEach((btn) => {
+        const isActive = btn.dataset.mode === nextMode;
+        btn.classList.toggle('active', isActive);
+        btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      });
+    }
+
+    if (cloudToggle) {
+      cloudToggle.addEventListener('click', (event) => {
+        const target = event.target.closest('button[data-mode]');
+        if (!target) return;
+        const mode = target.dataset.mode === 'words' ? 'words' : 'phrases';
+        if (statsState.cloudMode === mode) {
+          updateCloudToggleButtons(mode);
+          return;
+        }
+        statsState.cloudMode = mode;
+        updateCloudToggleButtons(mode);
+        refreshCloud();
+      });
+    }
+
+    updateCloudToggleButtons(statsState.cloudMode);
 
     resetProgressBars();
 
@@ -690,16 +731,24 @@
         host.appendChild(placeholder);
         return;
       }
-      words.forEach(w=>{
+      const maxScore = words.reduce((acc, item) => {
+        const value = Number(item?.score);
+        if (!Number.isFinite(value)) return acc;
+        return Math.max(acc, Math.max(0, value));
+      }, 0);
+      const base = maxScore > 0 ? maxScore : 1;
+      words.forEach((w)=>{
+        const score = Number(w?.score);
+        const weight = Number.isFinite(score) && score > 0 ? score / base : 0;
         const el=document.createElement('span');
         el.textContent=w.text;
-        el.style.fontSize=(14+Math.round(26*w.weight))+'px';
-        el.style.setProperty('--w', w.weight);
-        el.setAttribute('data-w', String(w.weight));
+        el.style.fontSize=(14+Math.round(26*weight))+'px';
+        el.style.setProperty('--w', weight);
+        el.setAttribute('data-w', String(weight));
         host.appendChild(el);
       });
     }
-    // renderCloud([{text:'Syzygy',weight:1},{text:'听话',weight:.85},{text:'现在',weight:.7},{text:'抱紧',weight:.6}]);
+    // renderCloud([{text:'Syzygy',score:1},{text:'听话',score:.85},{text:'现在',score:.7},{text:'抱紧',score:.6}]);
 
     function refreshCloud(){
       const sorted = Array.isArray(statsState.sortedCandidates) ? statsState.sortedCandidates : [];
@@ -708,33 +757,60 @@
         renderCloud([]);
         return;
       }
-      const usable = [];
+      const limit = 10;
+      const phrases = [];
+      const unigrams = [];
       for (const entry of sorted) {
         if (!entry) continue;
-        if (entry.score > 0 || entry.n === 1) {
-          usable.push(entry);
+        if (!(entry.score > 0 || entry.n === 1)) continue;
+        if (entry.n > 1 && phrases.length < limit) {
+          phrases.push(entry);
         }
-        if (usable.length >= 10) break;
+        if (entry.n === 1 && unigrams.length < limit) {
+          unigrams.push(entry);
+        }
+        if (phrases.length >= limit && unigrams.length >= limit) {
+          break;
+        }
       }
-      if (!usable.length) {
+
+      const wordView = unigrams.slice(0, limit);
+      const phraseView = phrases.slice(0, limit);
+      if (phraseView.length < limit) {
+        for (let i = 0; i < wordView.length && phraseView.length < limit; i += 1) {
+          phraseView.push(wordView[i]);
+        }
+      }
+
+      let active = [];
+      if (statsState.cloudMode === 'words') {
+        active = wordView.length ? wordView : phraseView;
+      } else {
+        active = phraseView.length ? phraseView : wordView;
+      }
+
+      if (!active.length) {
         statsState.top10 = [];
         renderCloud([]);
         return;
       }
-      const topScore = usable[0]?.score || 1;
-      const words = usable.map((entry) => {
-        const weight = topScore ? Math.max(0, entry.score) / topScore : 0;
+
+      const topScore = active[0]?.score || 0;
+      const items = active.map((entry) => {
+        const score = Number(entry.score) || 0;
+        const weight = topScore ? Math.max(0, score) / topScore : 0;
         return {
           text: entry.token,
+          score,
           weight,
           count: entry.freq,
           pct: statsState.totalTokens ? entry.freq / statsState.totalTokens : 0,
-          score: entry.score,
           n: entry.n,
         };
       });
-      statsState.top10 = words;
-      renderCloud(words.map(({ text, weight }) => ({ text, weight })));
+
+      statsState.top10 = items;
+      renderCloud(items);
     }
 
     // —— 保存为图片（防截断版） —— //
