@@ -147,27 +147,12 @@ export async function parseJSONStream(
   };
 
   const appendShardSlice = (text) => {
-    if (!text || aborted) return;
-    const slice = `${text}\n`;
-    const task = (async () => {
-      try {
-        await appendToShard(slice);
-        const stats = typeof getShardProgress === 'function' ? getShardProgress() : null;
-        if (!stats || typeof stats.persistedBytes !== 'number') {
-          bytesPersisted += slice.length;
-        } else {
-          bytesPersisted = stats.persistedBytes;
-        }
-        const persisted = stats?.persistedBytes ?? bytesPersisted;
-        const pct = totalBytes ? Math.min(100, (persisted / totalBytes) * 100) : 0;
-        progressState.shardPct = pct;
-        updateProgress({ shardPct: pct });
-      } catch (err) {
-        console.error('Failed to append shard slice', err);
-      }
-    })();
-    shardTasks.push(task);
-  };
+  if (!text || aborted) return;
+  const slice = `${text}\n`;
+  appendToShard(slice).catch(err => {
+    console.error('Failed to append shard slice', err);
+  });
+};
 
   const emitMessage = (msg, convTs) => {
     if (aborted || !shouldEmit(msg)) return;
@@ -328,9 +313,13 @@ export async function parseJSONStream(
     return i;
   };
 
-  const processBuffer = (isFinal = false) => {
+  const processBuffer = async (isFinal = false) => {
     let consumed = 0;
+    let iterationCount = 0; 
     while (parseIndex < buffer.length) {
+      if (iterationCount++ % 10 === 0) {  
+        await new Promise(r => setTimeout(r, 0));  
+    }
       if (!rootDetected) {
         const next = skipWhitespace(buffer, parseIndex);
         if (next >= buffer.length && !isFinal) break;
@@ -438,7 +427,7 @@ while (!aborted) {
     } else {
       const res = await reader.read();
       readChunk = res.value;
-done = res.done;
+      done = res.done;
     }
   } catch (err) {
     if (err?.name === 'AbortError') {
@@ -457,7 +446,7 @@ done = res.done;
     if (readChunk && readChunk.byteLength) {
       bytesRead += readChunk.byteLength;
       buffer += decoder.decode(readChunk, { stream: true });
-      processBuffer(false);
+      await processBuffer(false);
       const pct = totalBytes ? Math.min(100, (bytesRead / totalBytes) * 100) : 0;
       updateProgress({ parsePct: pct });
     }
@@ -475,7 +464,7 @@ done = res.done;
 
   if (!aborted) {
     buffer += decoder.decode();
-    processBuffer(true);
+    await processBuffer(true);
     finished = true;
     await Promise.allSettled(shardTasks);
     shardTasks.length = 0;
