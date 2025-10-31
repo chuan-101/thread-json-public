@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 
 import { threeMonthCutoff, filterMessagesByWindow } from '../src/stats/models.js';
 import { resetYearAgg, bumpYearAgg, finalizeYearAgg } from '../src/stats/timeline.js';
-import { mergePartials } from '../src/stats/merge.js';
+import { mergePartials, scoreCandidates } from '../src/stats/merge.js';
+import { tokenize, WHITELIST } from '../src/stats/tokenize.js';
 
 const DAY_MS = 24 * 3600 * 1000;
 
@@ -54,38 +55,182 @@ test('yearly overview aggregates characters, images, and streaks', () => {
   assert.deepEqual(finalizeYearAgg(), {}, 'reset clears accumulator state');
 });
 
-test('mergePartials keeps results stable across runs', () => {
-  const cmsTable = new Uint32Array(8).fill(50);
-  const cms = { depth: 2, width: 4, table: cmsTable };
+test('mergePartials unions candidates by n-gram order and preserves determinism', () => {
+  const cmsTable = new Uint32Array(16).fill(32);
+  const cms = { depth: 2, width: 8, table: cmsTable };
   const partials = [
     {
-      mgTopK: [
-        { token: 'alpha', countEst: 5 },
-        { token: 'beta', countEst: 7 },
-        { token: 'gamma', countEst: 2 },
-        { token: 'delta', countEst: 1 },
+      shardId: 1,
+      totalTokens: 100,
+      uTopK: [
+        { token: 'hello', countEst: 50 },
+        { token: 'world', countEst: 35 },
       ],
-      totalTokens: 20,
-      cms,
+      bTopK: [
+        { token: 'hello world', countEst: 28 },
+        { token: 'world peace', countEst: 18 },
+      ],
+      tTopK: [
+        { token: 'hello brave world', countEst: 12 },
+      ],
+      cmsU: cms,
+      cmsB: cms,
+      cmsT: cms,
     },
     {
-      mgTopK: [
-        { token: 'beta', countEst: 4 },
-        { token: 'delta', countEst: 10 },
-        { token: 'epsilon', countEst: 6 },
+      shardId: 2,
+      totalTokens: 80,
+      uTopK: [
+        { token: 'peace', countEst: 20 },
+        { token: 'brave', countEst: 16 },
       ],
-      totalTokens: 30,
-      cms,
+      bTopK: [
+        { token: 'brave world', countEst: 14 },
+      ],
+      tTopK: [
+        { token: 'make the world', countEst: 9 },
+      ],
+      cmsU: cms,
+      cmsB: cms,
+      cmsT: cms,
     },
   ];
 
-  const first = mergePartials(partials, 3);
-  const second = mergePartials(partials, 3);
+  const first = mergePartials(partials, { limitPerN: { 1: 3, 2: 3, 3: 2 } });
+  const second = mergePartials(partials, { limitPerN: { 1: 3, 2: 3, 3: 2 } });
 
   assert.deepEqual(first, second, 'repeated runs should be deterministic');
+  assert.equal(first.totalTokens, 180, 'total tokens sum across shards');
   assert.deepEqual(
-    first,
-    { candidates: ['beta', 'delta', 'epsilon'], totalTokens: 50 },
-    'top candidates preserve deterministic ordering and token totals',
+    first.candidatesByN[3],
+    ['hello brave world', 'make the world'],
+    'trigram union retains ordering up to configured limit',
+  );
+  assert.deepEqual(
+    first.candidatesByN[2].slice(0, 3),
+    ['hello world', 'world peace', 'brave world'],
+    'bigram ordering honors top-k before support expansions',
+  );
+  assert.ok(
+    first.candidatesByN[2].includes('make the')
+      && first.candidatesByN[2].includes('the world'),
+    'trigram support bigrams are appended for PMI calculations',
+  );
+  assert.ok(
+    ['hello', 'world', 'peace', 'brave', 'make', 'the'].every((token) => first.candidatesByN[1].includes(token)),
+    'unigram union includes phrase components for downstream scoring',
+  );
+  assert.ok(
+    first.candidates.includes('hello brave world')
+      && first.candidates.includes('make the world'),
+    'flattened candidate list includes merged n-grams',
+  );
+});
+
+test('tokenize normalizes aliases before downstream scoring', () => {
+  const tokens = tokenize('Chat_GPT + Open_AI & GPT_4');
+  assert.deepEqual(tokens, ['chatgpt', 'openai', 'gpt4'], 'underscored variants collapse to canonical tokens');
+});
+
+test('whitelisted phrases receive a modest scoring bonus', () => {
+  assert.ok(
+    WHITELIST.has('openai') && WHITELIST.has('chatgpt'),
+    'expected canonical tokens should be whitelisted',
+  );
+
+  const stats = new Map();
+  stats.set('openai', { n: 1, freq: 80 });
+  stats.set('chatgpt', { n: 1, freq: 70 });
+  stats.set('hello', { n: 1, freq: 80 });
+  stats.set('world', { n: 1, freq: 70 });
+
+  const leftContext = [['__START__', 35]];
+  const rightContext = [['rocks', 30]];
+
+  stats.set('openai chatgpt', {
+    n: 2,
+    freq: 45,
+    leftNeighbors: new Map(leftContext),
+    rightNeighbors: new Map(rightContext),
+  });
+  stats.set('hello world', {
+    n: 2,
+    freq: 45,
+    leftNeighbors: new Map(leftContext),
+    rightNeighbors: new Map(rightContext),
+  });
+
+  const scored = scoreCandidates(stats, 500);
+  const openaiEntry = scored.find((entry) => entry.token === 'openai chatgpt');
+  const helloEntry = scored.find((entry) => entry.token === 'hello world');
+
+  assert.ok(openaiEntry && helloEntry, 'both candidate phrases should be scored');
+  assert.ok(openaiEntry.score > helloEntry.score, 'whitelisted phrase should outrank the baseline');
+  const ratio = openaiEntry.score / helloEntry.score;
+  assert.ok(ratio > 1.05 && ratio < 1.2, 'bonus stays within the intended modest range');
+});
+
+test('scoreCandidates favors multi-token phrases over single words', () => {
+  const stats = new Map();
+  stats.set('hello', { n: 1, freq: 100 });
+  stats.set('world', { n: 1, freq: 90 });
+  stats.set('now', { n: 1, freq: 60 });
+  stats.set('greetings', { n: 1, freq: 20 });
+
+  stats.set(
+    'hello world',
+    {
+      n: 2,
+      freq: 65,
+      leftNeighbors: new Map([
+        ['__START__', 60],
+      ]),
+      rightNeighbors: new Map([
+        ['now', 45],
+        ['again', 10],
+      ]),
+    },
+  );
+  stats.set(
+    'world now',
+    {
+      n: 2,
+      freq: 45,
+      leftNeighbors: new Map([
+        ['world', 10],
+        ['hello', 25],
+      ]),
+      rightNeighbors: new Map([
+        ['!', 20],
+        ['__END__', 12],
+      ]),
+    },
+  );
+
+  stats.set(
+    'hello world now',
+    {
+      n: 3,
+      freq: 50,
+      leftNeighbors: new Map([
+        ['__START__', 20],
+        ['greetings', 10],
+      ]),
+      rightNeighbors: new Map([
+        ['!', 15],
+        ['__END__', 10],
+      ]),
+    },
+  );
+
+  const scored = scoreCandidates(stats, 400);
+  assert.ok(scored.length > 0, 'scoring produces ranked candidates');
+  const topTokens = scored.slice(0, 3).map((entry) => entry.token);
+  assert.equal(topTokens[0], 'hello world now', 'trigram outranks others due to PMI bonus');
+  assert.equal(topTokens[1], 'hello world', 'strong bigram is prioritized after trigram');
+  assert.ok(
+    scored.find((entry) => entry.token === 'hello')?.score
+      < scored.find((entry) => entry.token === 'hello world')?.score,
+    'unigram score remains below phrase counterpart after down-weighting',
   );
 });

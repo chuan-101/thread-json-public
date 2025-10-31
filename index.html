@@ -217,7 +217,7 @@
     import { parseJSONStream } from './src/ingest/stream-parse.js';
     import { clearAll, listShards, readShardMessages } from './src/ingest/db.js';
     import { WorkerPool } from './src/workers/pool.js';
-    import { mergePartials, exactRecount } from './src/stats/merge.js';
+    import { mergePartials, exactRecount, scoreCandidates } from './src/stats/merge.js';
     import { threeMonthCutoff, filterMessagesByWindow } from './src/stats/models.js';
     import { finalizeYearAgg } from './src/stats/timeline.js';
     // —— 主题下拉 —— //
@@ -320,6 +320,7 @@
 
         const merged = mergePartials(partials);
         statsState.candidates = merged.candidates;
+        statsState.candidatesByN = merged.candidatesByN || { 1: [], 2: [], 3: [] };
         statsState.totalTokens = merged.totalTokens;
 
         if (!statsState.candidates.length) {
@@ -333,6 +334,7 @@
           statsState.counts = new Map();
           statsState.sortedCandidates = [];
           statsState.top10 = [];
+          statsState.candidatesByN = { 1: [], 2: [], 3: [] };
           refreshCloud();
           return;
         }
@@ -378,10 +380,8 @@
         if (cancelRequested) return;
         statsState.recountTimeMs = recountEnd - recountStart;
         statsState.counts = recountMap;
-        statsState.sortedCandidates = Array.from(recountMap.entries()).sort((a, b) => {
-          if (b[1] !== a[1]) return b[1] - a[1];
-          return a[0].localeCompare(b[0]);
-        });
+        const scored = scoreCandidates(recountMap, statsState.totalTokens);
+        statsState.sortedCandidates = scored;
         updateProgressBars({ statsPct: 100, statsPhase: '完成 · 近90天处理完毕' });
 
         refreshCloud();
@@ -402,6 +402,7 @@
         statsState.top10 = [];
         statsState.totalTokens = 0;
         statsState.recountTimeMs = 0;
+        statsState.candidatesByN = { 1: [], 2: [], 3: [] };
         refreshCloud();
         throw err;
       }
@@ -444,6 +445,7 @@
       counts: new Map(),
       sortedCandidates: [],
       candidates: [],
+      candidatesByN: { 1: [], 2: [], 3: [] },
       totalTokens: 0,
       recountTimeMs: 0,
       top10: [],
@@ -496,6 +498,7 @@
       statsState.counts.clear();
       statsState.sortedCandidates = [];
       statsState.candidates = [];
+      statsState.candidatesByN = { 1: [], 2: [], 3: [] };
       statsState.totalTokens = 0;
       statsState.recountTimeMs = 0;
       statsState.top10 = [];
@@ -582,6 +585,7 @@
       statsState.counts.clear();
       statsState.sortedCandidates = [];
       statsState.candidates = [];
+      statsState.candidatesByN = { 1: [], 2: [], 3: [] };
       statsState.totalTokens = 0;
       statsState.recountTimeMs = 0;
       statsState.top10 = [];
@@ -698,29 +702,37 @@
     // renderCloud([{text:'Syzygy',weight:1},{text:'听话',weight:.85},{text:'现在',weight:.7},{text:'抱紧',weight:.6}]);
 
     function refreshCloud(){
-      const sorted = statsState.sortedCandidates || [];
+      const sorted = Array.isArray(statsState.sortedCandidates) ? statsState.sortedCandidates : [];
       if (!sorted.length) {
         statsState.top10 = [];
         renderCloud([]);
         return;
       }
-      const topEntries = [];
-      for (const [token, count] of sorted) {
-        topEntries.push({ token, count });
-        if (topEntries.length >= 10) break;
+      const usable = [];
+      for (const entry of sorted) {
+        if (!entry) continue;
+        if (entry.score > 0 || entry.n === 1) {
+          usable.push(entry);
+        }
+        if (usable.length >= 10) break;
       }
-      if (!topEntries.length) {
+      if (!usable.length) {
         statsState.top10 = [];
         renderCloud([]);
         return;
       }
-      const topCount = topEntries[0]?.count || 1;
-      const words = topEntries.map(({ token, count }) => ({
-        text: token,
-        weight: topCount ? count / topCount : 0,
-        count,
-        pct: statsState.totalTokens ? count / statsState.totalTokens : 0,
-      }));
+      const topScore = usable[0]?.score || 1;
+      const words = usable.map((entry) => {
+        const weight = topScore ? Math.max(0, entry.score) / topScore : 0;
+        return {
+          text: entry.token,
+          weight,
+          count: entry.freq,
+          pct: statsState.totalTokens ? entry.freq / statsState.totalTokens : 0,
+          score: entry.score,
+          n: entry.n,
+        };
+      });
       statsState.top10 = words;
       renderCloud(words.map(({ text, weight }) => ({ text, weight })));
     }
