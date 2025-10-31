@@ -1,4 +1,5 @@
 import { WorkerPool } from '../workers/pool.js';
+import { WHITELIST } from './tokenize.js';
 
 const CMS_SEEDS = [0x1b873593, 0xcc9e2d51, 0x9e3779b1, 0x85ebca6b];
 const RECOUNT_MAX_CHUNK_CHARS = 1_048_576; // ~2MB of UTF-16 text
@@ -12,6 +13,8 @@ const DEFAULT_SCORING = {
   minFreq: 5,
   minPMI: 1.5,
 };
+
+const WHITELIST_BONUS = 1.1;
 
 function hashToken(token, seed) {
   let hash = seed >>> 0;
@@ -60,6 +63,13 @@ function splitTokens(phrase) {
 function ngramLength(phrase) {
   const parts = splitTokens(phrase);
   return parts.length || 1;
+}
+
+function isWhitelistedPhrase(parts) {
+  if (!Array.isArray(parts) || parts.length <= 1) {
+    return false;
+  }
+  return parts.every((part) => WHITELIST.has(part));
 }
 
 function appendOrdered(set, list, token) {
@@ -601,6 +611,9 @@ export function scoreCandidates(statsMap, totalTokens, options = {}) {
         continue;
       }
       entry.score = entry.freq * (1 + params.alpha * pmi) * (1 + params.beta * entry.minEntropy);
+      if (isWhitelistedPhrase(parts)) {
+        entry.score *= WHITELIST_BONUS;
+      }
       const penaltyFactor = 0.85;
       unigramPenalty.set(a, (unigramPenalty.get(a) || 1) * penaltyFactor);
       unigramPenalty.set(b, (unigramPenalty.get(b) || 1) * penaltyFactor);
@@ -636,6 +649,10 @@ export function scoreCandidates(statsMap, totalTokens, options = {}) {
         * (1 + params.alpha * avgPMI)
         * (1 + params.beta * entry.minEntropy)
         * params.gamma;
+
+      if (isWhitelistedPhrase(parts)) {
+        entry.score *= WHITELIST_BONUS;
+      }
 
       const unigramFactor = 0.75;
       unigramPenalty.set(a, (unigramPenalty.get(a) || 1) * unigramFactor);

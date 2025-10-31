@@ -8,6 +8,20 @@ export const FIXED_STOPWORDS = new Set([
   'that', 'this', 'it', 'as', 'at', 'by', 'from',
 ]);
 
+export const ALIAS = new Map([
+  ['chat_gpt', 'chatgpt'],
+  ['open_ai', 'openai'],
+  ['gpt_4', 'gpt4'],
+  ['gpt_3', 'gpt3'],
+]);
+
+export const WHITELIST = new Set([
+  'chatgpt',
+  'openai',
+  'gpt4',
+  'gpt3',
+]);
+
 const CJK_CLASS = '\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}';
 const TOKEN_REGEX = new RegExp(`[${CJK_CLASS}]|[a-z0-9_]+`, 'gu');
 const CJK_TOKEN_REGEX = new RegExp(`^[${CJK_CLASS}]+$`, 'u');
@@ -25,8 +39,11 @@ export function* tokenizeIter(text) {
   const lower = String(text).toLowerCase();
 
   for (const match of lower.matchAll(TOKEN_REGEX)) {
-    const token = match[0];
+    let token = match[0];
     if (!token) continue;
+
+    token = ALIAS.get(token) || token;
+
     if (stopwords.has(token)) {
       continue;
     }

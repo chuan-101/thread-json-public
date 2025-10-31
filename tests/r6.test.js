@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { threeMonthCutoff, filterMessagesByWindow } from '../src/stats/models.js';
 import { resetYearAgg, bumpYearAgg, finalizeYearAgg } from '../src/stats/timeline.js';
 import { mergePartials, scoreCandidates } from '../src/stats/merge.js';
+import { tokenize, WHITELIST } from '../src/stats/tokenize.js';
 
 const DAY_MS = 24 * 3600 * 1000;
 
@@ -124,6 +125,49 @@ test('mergePartials unions candidates by n-gram order and preserves determinism'
       && first.candidates.includes('make the world'),
     'flattened candidate list includes merged n-grams',
   );
+});
+
+test('tokenize normalizes aliases before downstream scoring', () => {
+  const tokens = tokenize('Chat_GPT + Open_AI & GPT_4');
+  assert.deepEqual(tokens, ['chatgpt', 'openai', 'gpt4'], 'underscored variants collapse to canonical tokens');
+});
+
+test('whitelisted phrases receive a modest scoring bonus', () => {
+  assert.ok(
+    WHITELIST.has('openai') && WHITELIST.has('chatgpt'),
+    'expected canonical tokens should be whitelisted',
+  );
+
+  const stats = new Map();
+  stats.set('openai', { n: 1, freq: 80 });
+  stats.set('chatgpt', { n: 1, freq: 70 });
+  stats.set('hello', { n: 1, freq: 80 });
+  stats.set('world', { n: 1, freq: 70 });
+
+  const leftContext = [['__START__', 35]];
+  const rightContext = [['rocks', 30]];
+
+  stats.set('openai chatgpt', {
+    n: 2,
+    freq: 45,
+    leftNeighbors: new Map(leftContext),
+    rightNeighbors: new Map(rightContext),
+  });
+  stats.set('hello world', {
+    n: 2,
+    freq: 45,
+    leftNeighbors: new Map(leftContext),
+    rightNeighbors: new Map(rightContext),
+  });
+
+  const scored = scoreCandidates(stats, 500);
+  const openaiEntry = scored.find((entry) => entry.token === 'openai chatgpt');
+  const helloEntry = scored.find((entry) => entry.token === 'hello world');
+
+  assert.ok(openaiEntry && helloEntry, 'both candidate phrases should be scored');
+  assert.ok(openaiEntry.score > helloEntry.score, 'whitelisted phrase should outrank the baseline');
+  const ratio = openaiEntry.score / helloEntry.score;
+  assert.ok(ratio > 1.05 && ratio < 1.2, 'bonus stays within the intended modest range');
 });
 
 test('scoreCandidates favors multi-token phrases over single words', () => {
