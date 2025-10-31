@@ -146,13 +146,12 @@ export async function parseJSONStream(
     return true;
   };
 
-  const appendShardSlice = (text) => {
-  if (!text || aborted) return;
-  const slice = `${text}\n`;
-  appendToShard(slice).catch(err => {
-    console.error('Failed to append shard slice', err);
-  });
-};
+  const appendShardSlice = (message) => {
+    if (!message || aborted) return;
+    appendToShard(message).catch((err) => {
+      console.error('Failed to append shard slice', err);
+    });
+  };
 
   const emitMessage = (msg, convTs) => {
     if (aborted || !shouldEmit(msg)) return;
@@ -170,7 +169,7 @@ export async function parseJSONStream(
     if (typeof onMessage === 'function') {
       onMessage(payload);
     }
-    appendShardSlice(payload.content);
+    appendShardSlice(payload);
   };
 
   const processConversation = (conv) => {

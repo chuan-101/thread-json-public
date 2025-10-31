@@ -201,11 +201,11 @@
 
   <script type="module">
     import { parseJSONStream } from './src/ingest/stream-parse.js';
-    import { clearAll, listShards, readShardText } from './src/ingest/db.js';
+    import { clearAll, listShards, readShardMessages } from './src/ingest/db.js';
     import { WorkerPool } from './src/workers/pool.js';
     import { mergePartials, exactRecount } from './src/stats/merge.js';
     import { tokenize, createStopwordSet } from './src/stats/tokenize.js';
-    import { applyMask } from './src/stats/mask.js';
+    import { threeMonthCutoff, filterMessagesByWindow } from './src/stats/models.js';
     // —— 主题下拉 —— //
     const themeSel = document.getElementById('theme');
     themeSel.addEventListener('change', ()=> {
@@ -216,8 +216,9 @@
       if (cancelRequested) return;
       try {
         let shards = [];
+        const cutoff = threeMonthCutoff();
         try {
-          shards = await listShards();
+          shards = await listShards({ cutoff });
         } catch (err) {
           console.error('读取分片列表失败', err);
           return;
@@ -250,13 +251,20 @@
         try {
           const tasks = shards.map(async (shard) => {
             if (cancelRequested) return null;
-            const text = await readShardText(shard.id);
+            const messages = await readShardMessages(shard.id);
             if (cancelRequested) return null;
+            const filtered = filterMessagesByWindow(messages, cutoff);
+            if (!filtered.length) {
+              completed += 1;
+              updateProgressBars({ statsPct: Math.min(50, (completed / shards.length) * 50) });
+              return null;
+            }
             const result = await pool.run({
               shardId: shard.id,
-              text,
+              messages: filtered,
               stopwords: stopwordPayload,
               mask,
+              cutoff,
             });
             if (cancelRequested) return null;
             if (result?.error) {
@@ -293,12 +301,17 @@
           : () => Date.now();
         const recountStart = now();
         const iterShardText = async (shardId) => {
-          const text = await readShardText(shardId);
-          if (!text) return '';
-          return applyMask(text, mask);
+          const messages = await readShardMessages(shardId);
+          const filtered = filterMessagesByWindow(messages, cutoff);
+          if (!filtered.length) {
+            return { messages: [] };
+          }
+          return { messages: filtered };
         };
         iterShardText.shardIds = shards.map((s) => s.id);
         iterShardText.stopwords = stopwordPayload;
+        iterShardText.cutoff = cutoff;
+        iterShardText.mask = mask;
 
         const recountMap = await exactRecount(
           merged.candidates,
