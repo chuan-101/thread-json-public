@@ -1,14 +1,13 @@
-import { tokenizeIter, createStopwordSet } from '../stats/tokenize.js';
+import { tokenizeIter } from '../stats/tokenize.js';
 import { applyMask } from '../stats/mask.js';
 
 const BATCH_YIELD_INTERVAL = 8192;
 
 self.onmessage = async (event) => {
-  const { shardId, text, messages, candidates, stopwords, cutoff, mask } = event.data || {};
+  const { shardId, text, messages, candidates, cutoff, mask } = event.data || {};
   try {
     const candidateArray = Array.isArray(candidates) ? candidates : [];
     const candidateSet = new Set(candidateArray);
-    const stopwordSet = createStopwordSet(stopwords);
     const counts = new Map();
     let tokensSeen = 0;
     let lastYieldCount = 0;
@@ -17,7 +16,7 @@ self.onmessage = async (event) => {
 
     const processText = async (input) => {
       const masked = applyMask(typeof input === 'string' ? input : '', mask);
-      const iterable = tokenizeIter(masked, stopwordSet);
+      const iterable = tokenizeIter(masked);
       for (const token of iterable) {
         tokensSeen += 1;
         if (candidateSet.has(token)) {

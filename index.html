@@ -114,10 +114,6 @@
         </div>
 
         <div class="row">
-          <div style="flex:2;min-width:260px">
-            <label class="small">停用词（轻过滤，逗号或空格分隔）</label>
-            <input id="stopwords" type="text" placeholder="啊 的 了 你 我 我们 然后 就是 等…"/>
-          </div>
           <label class="pill"><input type="checkbox" id="mask"/> <span>脱敏开关</span></label>
         </div>
 
@@ -204,7 +200,6 @@
     import { clearAll, listShards, readShardMessages } from './src/ingest/db.js';
     import { WorkerPool } from './src/workers/pool.js';
     import { mergePartials, exactRecount } from './src/stats/merge.js';
-    import { tokenize, createStopwordSet } from './src/stats/tokenize.js';
     import { threeMonthCutoff, filterMessagesByWindow } from './src/stats/models.js';
     // —— 主题下拉 —— //
     const themeSel = document.getElementById('theme');
@@ -212,7 +207,7 @@
       document.documentElement.setAttribute('data-theme', themeSel.value);
     });
 
-    async function runStatsPipeline({ stopwords, mask }) {
+    async function runStatsPipeline({ mask }) {
       if (cancelRequested) return;
       try {
         let shards = [];
@@ -245,7 +240,6 @@
 
         const pool = new WorkerPool(poolSize, workerUrl);
         const partials = [];
-        const stopwordPayload = Array.isArray(stopwords) ? stopwords : Array.from(stopwords || []);
         let completed = 0;
 
         try {
@@ -262,7 +256,6 @@
             const result = await pool.run({
               shardId: shard.id,
               messages: filtered,
-              stopwords: stopwordPayload,
               mask,
               cutoff,
             });
@@ -309,7 +302,6 @@
           return { messages: filtered };
         };
         iterShardText.shardIds = shards.map((s) => s.id);
-        iterShardText.stopwords = stopwordPayload;
         iterShardText.cutoff = cutoff;
         iterShardText.mask = mask;
 
@@ -375,11 +367,9 @@
       setProgress(p3,0);
     };
 
-    const stopwordsInput = document.getElementById('stopwords');
     const maskInput = document.getElementById('mask');
 
     const state = {
-      stopwords: new Set(),
       mask: false,
     };
 
@@ -393,23 +383,6 @@
     };
 
     const DEBUG_STATS = false;
-
-    const parseStopwordInput = (value) => {
-      if (!value) return [];
-      return value
-        .replace(/[，、]/g, ' ')
-        .split(/\s+/)
-        .map((v) => v.trim().toLowerCase())
-        .filter(Boolean);
-    };
-
-    const updateStopwordStateFromInput = () => {
-      const entries = parseStopwordInput(stopwordsInput?.value || '');
-      state.stopwords = new Set(entries);
-      return entries;
-    };
-
-    const getStopwordArray = () => Array.from(state.stopwords);
 
     // —— 文件选择与开始/中断 —— //
     const fileInput=document.getElementById('file');
@@ -447,7 +420,6 @@
 
       cancelRequested = false;
       resetProgressBars();
-      updateStopwordStateFromInput();
       state.mask = !!maskInput?.checked;
       statsState.counts.clear();
       statsState.sortedCandidates = [];
@@ -478,7 +450,7 @@
             { assistName, signal: currentController.signal },
           );
           if (!cancelRequested && parseResult?.aborted !== true) {
-            await runStatsPipeline({ stopwords: getStopwordArray(), mask: state.mask });
+            await runStatsPipeline({ mask: state.mask });
           }
         } catch (err) {
           if (err?.name !== 'AbortError') {
@@ -577,20 +549,18 @@
         renderCloud([]);
         return;
       }
-      const displayStopwords = new Set(parseStopwordInput(stopwordsInput?.value || ''));
-      const filtered = [];
+      const topEntries = [];
       for (const [token, count] of sorted) {
-        if (displayStopwords.has(token)) continue;
-        filtered.push({ token, count });
-        if (filtered.length >= 10) break;
+        topEntries.push({ token, count });
+        if (topEntries.length >= 10) break;
       }
-      if (!filtered.length) {
+      if (!topEntries.length) {
         statsState.top10 = [];
         renderCloud([]);
         return;
       }
-      const topCount = filtered[0]?.count || 1;
-      const words = filtered.map(({ token, count }) => ({
+      const topCount = topEntries[0]?.count || 1;
+      const words = topEntries.map(({ token, count }) => ({
         text: token,
         weight: topCount ? count / topCount : 0,
         count,
@@ -672,19 +642,10 @@ root.classList.remove('printing');
   document.body.removeChild(exportContainer);
 });
 
-    // —— 停用词与脱敏状态（统计时读取） —— //
-    stopwordsInput.addEventListener('input', () => {
-      updateStopwordStateFromInput();
-      refreshCloud();
-    });
-    stopwordsInput.addEventListener('change', () => {
-      updateStopwordStateFromInput();
-      refreshCloud();
-    });
+    // —— 脱敏状态（统计时读取） —— //
     maskInput.addEventListener('change', (e)=> {
       state.mask = !!e.target.checked;
     });
-    updateStopwordStateFromInput();
     state.mask = !!maskInput?.checked;
     refreshCloud();
 

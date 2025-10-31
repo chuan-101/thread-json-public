@@ -1,4 +1,4 @@
-import { tokenize, createStopwordSet } from '../stats/tokenize.js';
+import { tokenize } from '../stats/tokenize.js';
 import { applyMask } from '../stats/mask.js';
 
 const MG_K = 2000;
@@ -69,7 +69,7 @@ function buildCms(tokens) {
 }
 
 self.onmessage = async (event) => {
-  const { shardId, text, messages, stopwords, mask, cutoff } = event.data || {};
+  const { shardId, text, messages, mask, cutoff } = event.data || {};
   try {
     const effectiveCutoff = typeof cutoff === 'number' && Number.isFinite(cutoff) ? cutoff : null;
     let sourceText = typeof text === 'string' ? text : '';
@@ -88,8 +88,7 @@ self.onmessage = async (event) => {
       sourceText = pieces.join('\n');
     }
     const masked = applyMask(sourceText, mask);
-    const stopwordSet = createStopwordSet(stopwords);
-    const tokens = tokenize(masked, stopwordSet);
+    const tokens = tokenize(masked);
     const totalTokens = tokens.length;
     const mgTopK = misraGries(tokens, MG_K);
     const cmsTable = buildCms(tokens);

@@ -22,7 +22,7 @@ export function filterMessagesByWindow(messages, cutoff = threeMonthCutoff()) {
 
 function approximateTokens(text) {
   if (!text) return 0;
-  const tokens = tokenize(String(text), new Set());
+  const tokens = tokenize(String(text));
   return tokens.length;
 }
 

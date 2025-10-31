@@ -96,16 +96,6 @@ export function mergePartials(partials, K = 3000) {
   return { candidates: topK, totalTokens };
 }
 
-function toStopwordArray(stopwords) {
-  if (!stopwords) return [];
-  if (Array.isArray(stopwords)) return stopwords;
-  if (stopwords instanceof Set) return Array.from(stopwords);
-  if (typeof stopwords === 'string') {
-    return stopwords.split(/[\s,]+/u).filter(Boolean);
-  }
-  return [];
-}
-
 function* chunkString(text, chunkSize = RECOUNT_MAX_CHUNK_CHARS) {
   if (!text) return;
   const str = String(text);
@@ -222,7 +212,6 @@ export async function exactRecount(candidates, iterShardText, onProgress) {
     return new Map();
   }
 
-  const stopwordPayload = toStopwordArray(iterShardText.stopwords);
   const workerUrl = new URL('../workers/recount-worker.js', import.meta.url).href;
   const pool = new WorkerPool(pickPoolSize(shardIds.length), workerUrl);
   const globalCounts = new Map();
@@ -239,7 +228,6 @@ export async function exactRecount(candidates, iterShardText, onProgress) {
         const payload = {
           shardId,
           candidates: uniqueCandidates,
-          stopwords: stopwordPayload,
           cutoff: iterShardText.cutoff,
           mask: iterShardText.mask,
         };
