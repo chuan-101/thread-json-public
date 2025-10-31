@@ -57,6 +57,15 @@
     .cloud span{display:inline-block;padding:2px 4px;border-radius:6px;color:var(--primary);font-weight:800}
     .cloud span[data-w]{opacity: calc(.65 + (.35 * var(--w,1)));}
 
+    .table-scroll{overflow:auto;}
+    table.data-table{width:100%;border-collapse:collapse;min-width:320px;}
+    table.data-table thead th{padding:8px 12px;text-align:left;font-weight:600;font-size:13px;border-bottom:1px solid rgba(0,0,0,.12);}
+    table.data-table tbody td{padding:10px 12px;font-size:14px;vertical-align:top;}
+    table.data-table tbody tr:nth-child(even){background:rgba(0,0,0,.04);}
+    table.data-table td.num, table.data-table th.num{text-align:right;}
+    table.data-table td.streak{white-space:nowrap;}
+    table.data-table td .small{font-size:12px;}
+
     /* 无障碍隐藏原生 file 输入，仅保留 label 按钮触发 */
 .visually-hidden{
   position:absolute; width:1px; height:1px; padding:0; margin:-1px;
@@ -85,7 +94,7 @@
     <section class="card stack" id="top">
       <header>
         <h1 class="h1">Echo：<span id="title-name">My GPT</span></h1>
-        <p class="muted">上传导出的对话JSON，离线统计词云 / 开头句式 /口癖，展示近三个月模型占比与时间轴摘要</p>
+        <p class="muted">上传导出的对话JSON，离线统计词云 / 开头句式 /口癖，展示近三个月模型占比与年度概览</p>
       </header>
 
       <div class="stack">
@@ -127,19 +136,18 @@
 
     <!-- 中部：结果区 -->
     <main class="stack" id="results">
-      <!-- 时间轴摘要 -->
-      <section class="card stack" id="card-time">
-        <div class="section-title">时间轴摘要</div>
-        <div class="kpi">
-          <div class="box"><div class="small">起始日期</div><div class="n" id="start-date">—</div></div>
-          <div class="box"><div class="small">首条时间</div><div class="n" id="first-ts">—</div></div>
-          <div class="box"><div class="small">累计天数</div><div class="n" id="days">—</div></div>
-          <div class="box"><div class="small">跨度（可选）</div><div class="n" id="span">—</div></div>
-        </div>
-        <div class="row small">
-          <label class="pill"><input type="radio" name="scope" value="all" checked/> 全部消息</label>
-          <label class="pill"><input type="radio" name="scope" value="assistant"/> 仅Assistant</label>
-          <span class="pill tag">时区：本地</span>
+      <!-- 年度概览 -->
+      <section class="card stack" id="card-yearly">
+        <div class="section-title">年度概览</div>
+        <div class="table-scroll">
+          <table class="data-table" id="yearly-table">
+            <thead>
+              <tr><th>年份</th><th class="num">字符数</th><th class="num">图片数</th><th class="num">连续活跃（次数 / 最长）</th></tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="4" class="muted">暂无统计</td></tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
@@ -201,6 +209,7 @@
     import { WorkerPool } from './src/workers/pool.js';
     import { mergePartials, exactRecount } from './src/stats/merge.js';
     import { threeMonthCutoff, filterMessagesByWindow } from './src/stats/models.js';
+    import { finalizeYearAgg } from './src/stats/timeline.js';
     // —— 主题下拉 —— //
     const themeSel = document.getElementById('theme');
     themeSel.addEventListener('change', ()=> {
@@ -382,6 +391,10 @@
       top10: [],
     };
 
+    const yearlyState = {
+      data: {},
+    };
+
     const DEBUG_STATS = false;
 
     // —— 文件选择与开始/中断 —— //
@@ -428,6 +441,8 @@
       statsState.recountTimeMs = 0;
       statsState.top10 = [];
       refreshCloud();
+      yearlyState.data = {};
+      renderYearlyOverview({});
       parseBtn.disabled = true;
       parseBtn.textContent = '解析中…';
       cancelBtn.disabled = false;
@@ -449,6 +464,11 @@
             },
             { assistName, signal: currentController.signal },
           );
+          if (!cancelRequested) {
+            const yearly = finalizeYearAgg();
+            yearlyState.data = yearly;
+            renderYearlyOverview(yearly);
+          }
           if (!cancelRequested && parseResult?.aborted !== true) {
             await runStatsPipeline({ mask: state.mask });
           }
@@ -507,19 +527,95 @@
       statsState.recountTimeMs = 0;
       statsState.top10 = [];
       refreshCloud();
+      yearlyState.data = {};
+      renderYearlyOverview({});
 
       resetUiState();
       cancelRequested = false;
     });
 
-    // —— 时间轴摘要占位 —— //
-    function setTimeSummary({startDate, firstTs, days, span}){
-      document.getElementById('start-date').textContent = startDate || '—';
-      document.getElementById('first-ts').textContent  = firstTs || '—';
-      document.getElementById('days').textContent      = days ?? '—';
-      document.getElementById('span').textContent      = span ?? '—';
+    // —— 年度概览渲染 —— //
+    function renderYearlyOverview(summary){
+      const tbody = document.querySelector('#yearly-table tbody');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+
+      const entries = Object.entries(summary || {})
+        .map(([year, value]) => [Number(year), value])
+        .filter(([year]) => !Number.isNaN(year))
+        .sort((a, b) => b[0] - a[0]);
+
+      const numberFormatter = (typeof Intl !== 'undefined' && Intl.NumberFormat)
+        ? new Intl.NumberFormat()
+        : null;
+      const formatNumber = (value) => {
+        if (!Number.isFinite(value)) return '0';
+        if (value === 0) return '0';
+        return numberFormatter ? numberFormatter.format(value) : String(value);
+      };
+
+      if (!entries.length) {
+        const row = document.createElement('tr');
+        const cell = document.createElement('td');
+        cell.colSpan = 4;
+        cell.className = 'muted';
+        cell.textContent = '暂无统计';
+        row.appendChild(cell);
+        tbody.appendChild(row);
+        return;
+      }
+
+      entries.forEach(([year, value]) => {
+        const entry = value || {};
+        const row = document.createElement('tr');
+
+        const yearCell = document.createElement('td');
+        const yearMain = document.createElement('div');
+        yearMain.textContent = String(year);
+        yearCell.appendChild(yearMain);
+        if (Number.isFinite(entry.activeDays) && entry.activeDays > 0) {
+          const sub = document.createElement('div');
+          sub.className = 'small muted';
+          sub.textContent = `活跃天数 ${entry.activeDays}`;
+          yearCell.appendChild(sub);
+        }
+        row.appendChild(yearCell);
+
+        const charsCell = document.createElement('td');
+        charsCell.className = 'num';
+        charsCell.textContent = formatNumber(entry.chars);
+        row.appendChild(charsCell);
+
+        const imagesCell = document.createElement('td');
+        imagesCell.className = 'num';
+        imagesCell.textContent = formatNumber(entry.images);
+        row.appendChild(imagesCell);
+
+        const streakCell = document.createElement('td');
+        streakCell.className = 'num streak';
+        if (
+          Number.isFinite(entry.activeDays) && entry.activeDays > 0 &&
+          Number.isFinite(entry.streakCount) && entry.streakCount > 0 &&
+          Number.isFinite(entry.longestStreak) && entry.longestStreak > 0
+        ) {
+          streakCell.textContent = `${entry.streakCount} / ${entry.longestStreak}`;
+        } else if (Number.isFinite(entry.activeDays) && entry.activeDays > 0) {
+          const count = Number.isFinite(entry.streakCount) ? entry.streakCount : 0;
+          const longest = Number.isFinite(entry.longestStreak) ? entry.longestStreak : 0;
+          streakCell.textContent = `${count} / ${longest}`;
+        } else {
+          streakCell.textContent = '—';
+        }
+        if (Number.isFinite(entry.activeDays) && entry.activeDays > 0) {
+          streakCell.title = `活跃天数 ${entry.activeDays}`;
+        }
+        row.appendChild(streakCell);
+
+        tbody.appendChild(row);
+      });
     }
-    // setTimeSummary({startDate:'2023-07-19', firstTs:'2023-07-19 21:36', days: 463, span: 470});
+
+    renderYearlyOverview(yearlyState.data);
 
     // —— 词云渲染占位（接入统计后调用） —— //
     function renderCloud(words){
@@ -587,7 +683,7 @@ titleClone.innerHTML = `
     Echo：<span>${document.getElementById('title-name').textContent}</span>
   </h1>
   <p style="opacity:.65;font-size:14px;margin:0 0 24px;color:var(--text)">
-    上传导出的对话JSON，离线统计词云 / 开头句式 /口癖，展示近三个月模型占比与时间轴摘要
+    上传导出的对话JSON，离线统计词云 / 开头句式 /口癖，展示近三个月模型占比与年度概览
   </p>
 `;
 

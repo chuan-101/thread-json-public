@@ -1,4 +1,5 @@
-import { appendToShard, finalizeShard, getShardProgress } from './db.js';
+import { appendToShard, finalizeShard } from './db.js';
+import { bumpYearAgg, resetYearAgg } from '../stats/timeline.js';
 
 let shardTasks = [];
 
@@ -11,6 +12,8 @@ export async function parseJSONStream(
   if (!file || typeof file.stream !== 'function') {
     throw new Error('A File instance with stream() is required');
   }
+
+  resetYearAgg();
 
   const assistName = (opts.assistName || '').trim();
   const totalBytes = typeof file.size === 'number' ? file.size : 0;
@@ -122,6 +125,143 @@ export async function parseJSONStream(
     return '';
   };
 
+  const registerImageKey = (seen, key) => {
+    const strKey = typeof key === 'string' && key ? key : null;
+    if (strKey) {
+      if (seen.has(strKey)) return false;
+      seen.add(strKey);
+    }
+    return true;
+  };
+
+  const countImagesInMessage = (msg, normalizedContent) => {
+    if (!msg || typeof msg !== 'object') return 0;
+    const seen = new Set();
+    let total = 0;
+
+    const maybeRecord = (key) => {
+      if (registerImageKey(seen, key)) {
+        total += 1;
+      }
+    };
+
+    const looksLikeImageMime = (value) => {
+      if (typeof value !== 'string') return false;
+      return value.toLowerCase().startsWith('image/');
+    };
+
+    const inspectAttachment = (attachment) => {
+      if (!attachment || typeof attachment !== 'object') return;
+      const type = typeof attachment.type === 'string' ? attachment.type.toLowerCase() : '';
+      const category = typeof attachment.category === 'string' ? attachment.category.toLowerCase() : '';
+      const purpose = typeof attachment.purpose === 'string' ? attachment.purpose.toLowerCase() : '';
+      const mimeCandidates = [
+        attachment.mime_type,
+        attachment.content_type,
+        attachment.mime,
+        attachment.media_type,
+        attachment.file?.mime_type,
+        attachment.file?.content_type,
+        attachment.file?.media_type,
+      ];
+      const hasImageMime = mimeCandidates.some(looksLikeImageMime);
+      const looksLikeImageType =
+        type.includes('image') || category.includes('image') || purpose.includes('image');
+      if (hasImageMime || looksLikeImageType) {
+        maybeRecord(
+          attachment.id ||
+            attachment.file_id ||
+            attachment.file?.id ||
+            attachment.url ||
+            attachment.file?.url ||
+            attachment.file?.name ||
+            `${type}:${attachment.name || attachment.filename || ''}`,
+        );
+        return;
+      }
+      const url =
+        attachment.url ||
+        attachment.href ||
+        attachment.link ||
+        attachment.file?.url ||
+        attachment.source ||
+        attachment.download_url;
+      if (typeof url === 'string') {
+        const lower = url.toLowerCase();
+        if (/\.(png|jpe?g|gif|webp|bmp|svg|heic|heif|tiff?|avif)(\?|#|$)/.test(lower)) {
+          maybeRecord(url);
+        }
+      }
+    };
+
+    const visitList = (list) => {
+      if (!Array.isArray(list)) return;
+      list.forEach((item) => {
+        if (!item || typeof item !== 'object') return;
+        inspectAttachment(item);
+        if (item.file && typeof item.file === 'object') {
+          inspectAttachment(item.file);
+        }
+      });
+    };
+
+    visitList(msg.attachments);
+    visitList(msg.files);
+    visitList(msg.assets);
+    visitList(msg.metadata?.attachments);
+    visitList(msg.metadata?.files);
+
+    const considerContentParts = (parts) => {
+      if (!Array.isArray(parts)) return;
+      parts.forEach((part) => {
+        if (!part || typeof part !== 'object') return;
+        const type = typeof part.type === 'string' ? part.type.toLowerCase() : '';
+        if (type.includes('image')) {
+          if (type === 'image_url' && part.image_url) {
+            if (typeof part.image_url === 'string') {
+              maybeRecord(part.image_url);
+            } else if (part.image_url && typeof part.image_url === 'object') {
+              maybeRecord(part.image_url.url || part.image_url.href || part.image_url.id);
+            }
+          } else {
+            maybeRecord(
+              part.id ||
+                part.asset_pointer ||
+                part.file_id ||
+                part.url ||
+                `${type}:${part.media_type || part.mime_type || ''}`,
+            );
+          }
+          return;
+        }
+        if (looksLikeImageMime(part.media_type) || looksLikeImageMime(part.mime_type)) {
+          maybeRecord(part.id || part.asset_pointer || `${part.media_type}:${part.url || ''}`);
+        }
+        if (Array.isArray(part.parts)) {
+          considerContentParts(part.parts);
+        }
+      });
+    };
+
+    considerContentParts(Array.isArray(msg.content) ? msg.content : undefined);
+    if (msg.content && typeof msg.content === 'object' && Array.isArray(msg.content.parts)) {
+      considerContentParts(msg.content.parts);
+    }
+    if (Array.isArray(msg.parts)) {
+      considerContentParts(msg.parts);
+    }
+
+    if (typeof normalizedContent === 'string' && normalizedContent) {
+      const regex = /!\[[^\]]*\]\(([^)]+)\)/g;
+      let match;
+      while ((match = regex.exec(normalizedContent)) !== null) {
+        maybeRecord(match[1]);
+      }
+    }
+
+    return total;
+  };
+
   const pickModel = (msg) => {
     if (!msg || typeof msg !== 'object') return undefined;
     const meta = msg.metadata || {};
@@ -153,16 +293,27 @@ export async function parseJSONStream(
     });
   };
 
-  const emitMessage = (msg, convTs) => {
+  const processMessage = (msg, convTs) => {
+    if (!msg || typeof msg !== 'object') return;
+    const role = msg.role || msg.author?.role;
+    const ts =
+      normalizeTs(msg.create_time || msg.update_time || msg.end_turn?.time || msg.ts) ||
+      convTs;
+    const content = normalizeContent(msg);
+    const imagesInMsg = countImagesInMessage(msg, content);
+
+    if (Number.isFinite(ts)) {
+      bumpYearAgg(ts, role || 'unknown', content, imagesInMsg);
+    }
+
     if (aborted || !shouldEmit(msg)) return;
+
     const payload = {
       role: 'assistant',
       name: msg.name || msg.author?.name || undefined,
-      content: normalizeContent(msg),
+      content,
       model: pickModel(msg),
-      ts:
-        normalizeTs(msg.create_time || msg.update_time || msg.end_turn?.time || msg.ts) ||
-        convTs,
+      ts,
     };
     payload.content = payload.content == null ? '' : String(payload.content);
     payload.model = payload.model == null ? undefined : String(payload.model);
@@ -182,7 +333,7 @@ export async function parseJSONStream(
       conv.messages.forEach((msgLike) => {
         if (!msgLike) return;
         const msg = msgLike.message || msgLike;
-        emitMessage(msg, convTs);
+        processMessage(msg, convTs);
       });
     }
 
@@ -190,7 +341,7 @@ export async function parseJSONStream(
       Object.values(conv.mapping).forEach((node) => {
         if (node && typeof node === 'object') {
           const msg = node.message || node.data?.message || node;
-          emitMessage(msg, convTs);
+          processMessage(msg, convTs);
           if (Array.isArray(node.children)) {
             node.children.forEach((childId) => {
               // children are references; handled when visited by mapping values
@@ -203,7 +354,7 @@ export async function parseJSONStream(
     if (conv.items && Array.isArray(conv.items)) {
       conv.items.forEach((item) => {
         const msg = item.message || item.data || item;
-        emitMessage(msg, convTs);
+        processMessage(msg, convTs);
       });
     }
 
@@ -217,7 +368,7 @@ export async function parseJSONStream(
         }
         if (typeof value === 'object') {
           if (value.role || value.author?.role) {
-            emitMessage(value, convTs);
+            processMessage(value, convTs);
             return;
           }
           Object.values(value).forEach(scan);
