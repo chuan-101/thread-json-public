@@ -1,7 +1,7 @@
 import { WorkerPool } from '../workers/pool.js';
 
 const CMS_SEEDS = [0x1b873593, 0xcc9e2d51, 0x9e3779b1, 0x85ebca6b];
-const RECOUNT_MAX_CHUNK_CHARS = 512_000; // ~1MB of UTF-16 text
+const RECOUNT_MAX_CHUNK_CHARS = 1_048_576; // ~2MB of UTF-16 text
 
 function hashToken(token, seed) {
   let hash = seed >>> 0;
@@ -186,13 +186,15 @@ function pickPoolSize(totalShards) {
   return poolSize;
 }
 
-export async function exactRecount(candidates, iterShardText, onProgress) {
+export async function exactRecount(candidates, iterShardText, onProgress, options = {}) {
   if (!Array.isArray(candidates) || !candidates.length) {
     return new Map();
   }
   if (typeof iterShardText !== 'function') {
     return new Map();
   }
+
+  const shouldAbort = typeof options?.shouldAbort === 'function' ? options.shouldAbort : null;
 
   let shardIds = [];
   if (Array.isArray(iterShardText.shardIds)) {
@@ -216,14 +218,23 @@ export async function exactRecount(candidates, iterShardText, onProgress) {
   const pool = new WorkerPool(pickPoolSize(shardIds.length), workerUrl);
   const globalCounts = new Map();
   const candidateSet = new Set(uniqueCandidates);
+  let aborted = false;
 
   try {
     let doneShards = 0;
     for (const shardId of shardIds) {
+      if (shouldAbort?.()) {
+        aborted = true;
+        break;
+      }
       const shardCounts = new Map();
       let shardTokensSeen = 0;
 
       for await (const chunk of iterateShardChunks(iterShardText, shardId)) {
+        if (shouldAbort?.()) {
+          aborted = true;
+          break;
+        }
         if (!chunk) continue;
         const payload = {
           shardId,
@@ -241,6 +252,10 @@ export async function exactRecount(candidates, iterShardText, onProgress) {
         if (result?.error) {
           throw new Error(result.error.message || 'Recount worker failed');
         }
+        if (shouldAbort?.()) {
+          aborted = true;
+          break;
+        }
         shardTokensSeen += Number(result?.tokensSeen) || 0;
         const pairs = Array.isArray(result?.counts) ? result.counts : [];
         for (const entry of pairs) {
@@ -252,13 +267,18 @@ export async function exactRecount(candidates, iterShardText, onProgress) {
         }
       }
 
+      if (aborted) {
+        break;
+      }
       for (const [token, count] of shardCounts.entries()) {
         if (!count) continue;
         globalCounts.set(token, (globalCounts.get(token) || 0) + count);
       }
 
       doneShards += 1;
-      onProgress?.({ doneShards, totalShards: shardIds.length, shardTokensSeen });
+      if (typeof onProgress === 'function') {
+        await onProgress({ doneShards, totalShards: shardIds.length, shardTokensSeen });
+      }
     }
   } finally {
     await pool.terminate();

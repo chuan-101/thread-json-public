@@ -127,9 +127,19 @@
         </div>
 
         <div class="stack">
-          <div><span class="small">解析进度</span><div class="progress"><div class="bar" id="p-parse"></div></div></div>
-          <div><span class="small">分片入库</span><div class="progress"><div class="bar" id="p-shard"></div></div></div>
-          <div><span class="small">统计计算</span><div class="progress"><div class="bar" id="p-stat"></div></div></div>
+          <div>
+            <span class="small">解析进度</span>
+            <div class="progress"><div class="bar" id="p-parse"></div></div>
+          </div>
+          <div>
+            <span class="small">分片入库</span>
+            <div class="progress"><div class="bar" id="p-shard"></div></div>
+          </div>
+          <div>
+            <span class="small">统计计算</span>
+            <div class="small muted" id="stats-phase-label"></div>
+            <div class="progress"><div class="bar" id="p-stat"></div></div>
+          </div>
         </div>
       </div>
     </section>
@@ -228,13 +238,37 @@
           return;
         }
         if (cancelRequested) return;
-        if (!Array.isArray(shards) || !shards.length) {
-          updateProgressBars({ statsPct: 100 });
+
+        const allShards = Array.isArray(shards) ? shards.filter((s) => s && s.id != null) : [];
+        if (!allShards.length) {
+          updateProgressBars({ statsPct: 100, statsPhase: '阶段1 · 无可用分片' });
+          await yieldToUi();
           refreshCloud();
           return;
         }
 
-        updateProgressBars({ statsPct: 0 });
+        const recentShards = allShards
+          .filter((shard) => {
+            if (typeof shard?.maxTs === 'number' && Number.isFinite(shard.maxTs)) {
+              return shard.maxTs >= cutoff;
+            }
+            return true;
+          })
+          .sort((a, b) => {
+            const aMax = typeof a?.maxTs === 'number' ? a.maxTs : typeof a?.minTs === 'number' ? a.minTs : -Infinity;
+            const bMax = typeof b?.maxTs === 'number' ? b.maxTs : typeof b?.minTs === 'number' ? b.minTs : -Infinity;
+            if (bMax !== aMax) return bMax - aMax;
+            return (b.id || 0) - (a.id || 0);
+          });
+
+        if (!recentShards.length) {
+          updateProgressBars({ statsPct: 100, statsPhase: '阶段1 · 无近90天分片' });
+          await yieldToUi();
+          refreshCloud();
+          return;
+        }
+
+        updateProgressBars({ statsPct: 0, statsPhase: '阶段1 · MG/CMS（近90天）' });
 
         const workerUrl = new URL('./src/workers/shard-worker.js', import.meta.url).href;
         let poolSize = 4;
@@ -242,8 +276,8 @@
           const suggested = Math.max(1, Math.floor(navigator.hardwareConcurrency - 1));
           poolSize = Math.min(4, Math.max(suggested, 1));
         }
-        poolSize = Math.max(1, Math.min(poolSize, shards.length));
-        if (poolSize < 3 && shards.length >= 3) {
+        poolSize = Math.max(1, Math.min(poolSize, recentShards.length));
+        if (poolSize < 3 && recentShards.length >= 3) {
           poolSize = 3;
         }
 
@@ -252,15 +286,16 @@
         let completed = 0;
 
         try {
-          const tasks = shards.map(async (shard) => {
-            if (cancelRequested) return null;
+          for (const shard of recentShards) {
+            if (cancelRequested) break;
             const messages = await readShardMessages(shard.id);
-            if (cancelRequested) return null;
+            if (cancelRequested) break;
             const filtered = filterMessagesByWindow(messages, cutoff);
             if (!filtered.length) {
               completed += 1;
-              updateProgressBars({ statsPct: Math.min(50, (completed / shards.length) * 50) });
-              return null;
+              updateProgressBars({ statsPct: Math.min(50, (completed / recentShards.length) * 50) });
+              await yieldToUi();
+              continue;
             }
             const result = await pool.run({
               shardId: shard.id,
@@ -268,16 +303,15 @@
               mask,
               cutoff,
             });
-            if (cancelRequested) return null;
+            if (cancelRequested) break;
             if (result?.error) {
               throw new Error(result.error.message || 'Worker 计算失败');
             }
             partials.push({ ...result, shardId: shard.id });
             completed += 1;
-            updateProgressBars({ statsPct: Math.min(50, (completed / shards.length) * 50) });
-            return null;
-          });
-          await Promise.all(tasks);
+            updateProgressBars({ statsPct: Math.min(50, (completed / recentShards.length) * 50) });
+            await yieldToUi();
+          }
         } finally {
           await pool.terminate();
         }
@@ -288,9 +322,14 @@
         statsState.candidates = merged.candidates;
         statsState.totalTokens = merged.totalTokens;
 
-        updateProgressBars({ statsPct: statsState.candidates.length ? 50 : 100 });
+        if (!statsState.candidates.length) {
+          updateProgressBars({ statsPct: 100, statsPhase: '阶段1 · 窗口内无候选' });
+        } else {
+          updateProgressBars({ statsPct: 50, statsPhase: '阶段2 · 精确重算（近90天）' });
+        }
 
         if (!statsState.candidates.length) {
+          await yieldToUi();
           statsState.counts = new Map();
           statsState.sortedCandidates = [];
           statsState.top10 = [];
@@ -303,37 +342,47 @@
           : () => Date.now();
         const recountStart = now();
         const iterShardText = async (shardId) => {
+          if (cancelRequested) {
+            return { messages: [] };
+          }
           const messages = await readShardMessages(shardId);
+          if (cancelRequested) {
+            return { messages: [] };
+          }
           const filtered = filterMessagesByWindow(messages, cutoff);
           if (!filtered.length) {
             return { messages: [] };
           }
           return { messages: filtered };
         };
-        iterShardText.shardIds = shards.map((s) => s.id);
+        iterShardText.shardIds = recentShards.map((s) => s.id);
         iterShardText.cutoff = cutoff;
         iterShardText.mask = mask;
 
         const recountMap = await exactRecount(
           merged.candidates,
           iterShardText,
-          ({ doneShards, totalShards }) => {
+          async ({ doneShards, totalShards }) => {
+            if (cancelRequested) return;
             const phasePct = totalShards ? 50 + (doneShards / totalShards) * 50 : 100;
             updateProgressBars({ statsPct: Math.min(100, phasePct) });
             if (DEBUG_STATS) {
               const elapsedMs = Math.round(now() - recountStart);
               console.debug('[stats]', { phase: 'recount', doneShards, totalShards, elapsedMs });
             }
+            await yieldToUi();
           },
+          { shouldAbort: () => cancelRequested },
         );
         const recountEnd = now();
+        if (cancelRequested) return;
         statsState.recountTimeMs = recountEnd - recountStart;
         statsState.counts = recountMap;
         statsState.sortedCandidates = Array.from(recountMap.entries()).sort((a, b) => {
           if (b[1] !== a[1]) return b[1] - a[1];
           return a[0].localeCompare(b[0]);
         });
-        updateProgressBars({ statsPct: 100 });
+        updateProgressBars({ statsPct: 100, statsPhase: '完成 · 近90天处理完毕' });
 
         refreshCloud();
 
@@ -369,11 +418,20 @@
 
     // —— 进度条占位：接入解析/统计后在此更新 —— //
     const p1=document.getElementById('p-parse'), p2=document.getElementById('p-shard'), p3=document.getElementById('p-stat');
+    const statsPhaseLabel = document.getElementById('stats-phase-label');
     const setProgress=(el,val)=>{ el.style.width=Math.max(0,Math.min(100,val))+'%'; };
+    const setStatsPhase = (text) => {
+      if (!statsPhaseLabel) return;
+      const next = text ? String(text) : '';
+      statsPhaseLabel.textContent = next;
+      statsPhaseLabel.style.display = next ? '' : 'none';
+    };
+    const yieldToUi = () => new Promise((resolve) => setTimeout(resolve, 0));
     const resetProgressBars = () => {
       setProgress(p1,0);
       setProgress(p2,0);
       setProgress(p3,0);
+      setStatsPhase('');
     };
 
     const maskInput = document.getElementById('mask');
@@ -408,10 +466,11 @@
     let currentController = null;
     let cancelRequested = false;
 
-    const updateProgressBars = ({ parsePct, shardPct, statsPct }) => {
+    const updateProgressBars = ({ parsePct, shardPct, statsPct, statsPhase }) => {
       if (typeof parsePct === 'number') setProgress(p1, parsePct);
       if (typeof shardPct === 'number') setProgress(p2, shardPct);
       if (typeof statsPct === 'number') setProgress(p3, statsPct);
+      if (statsPhase !== undefined) setStatsPhase(statsPhase);
     };
 
     const resetUiState = () => {
