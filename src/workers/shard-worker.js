@@ -1,7 +1,9 @@
-import { tokenize } from '../stats/tokenize.js';
+import { tokenize, inferTokenScript, FIXED_STOPWORDS } from '../stats/tokenize.js';
 import { applyMask } from '../stats/mask.js';
 
-const MG_K = 2000;
+const UNIGRAM_K = 1500;
+const BIGRAM_K = 1500;
+const TRIGRAM_K = 1000;
 const CMS_DEPTH = 4;
 const CMS_WIDTH = 1 << 18; // 262144
 const CMS_MASK = CMS_WIDTH - 1;
@@ -68,6 +70,41 @@ function buildCms(tokens) {
   return table;
 }
 
+function collectAnnotatedTokens(tokens) {
+  return tokens.map((token) => ({ token, script: inferTokenScript(token) }));
+}
+
+function collectNgrams(annotated, size) {
+  if (size <= 1) {
+    return annotated
+      .map((entry) => entry.token)
+      .filter((token) => token && !FIXED_STOPWORDS.has(token));
+  }
+  const grams = [];
+  const window = [];
+  let currentScript = null;
+  for (const entry of annotated) {
+    const token = entry.token;
+    if (!token || FIXED_STOPWORDS.has(token)) {
+      window.length = 0;
+      currentScript = null;
+      continue;
+    }
+    if (currentScript == null || entry.script !== currentScript) {
+      window.length = 0;
+      currentScript = entry.script;
+    }
+    window.push(token);
+    if (window.length > size) {
+      window.shift();
+    }
+    if (window.length === size) {
+      grams.push(window.join(' '));
+    }
+  }
+  return grams;
+}
+
 self.onmessage = async (event) => {
   const { shardId, text, messages, mask, cutoff } = event.data || {};
   try {
@@ -89,17 +126,40 @@ self.onmessage = async (event) => {
     }
     const masked = applyMask(sourceText, mask);
     const tokens = tokenize(masked);
+    const annotated = collectAnnotatedTokens(tokens);
     const totalTokens = tokens.length;
-    const mgTopK = misraGries(tokens, MG_K);
-    const cmsTable = buildCms(tokens);
+
+    const unigrams = collectNgrams(annotated, 1);
+    const bigrams = collectNgrams(annotated, 2);
+    const trigrams = collectNgrams(annotated, 3);
+
+    const uTopK = misraGries(unigrams, UNIGRAM_K);
+    const bTopK = misraGries(bigrams, BIGRAM_K);
+    const tTopK = misraGries(trigrams, TRIGRAM_K);
+
+    const cmsU = buildCms(unigrams);
+    const cmsB = buildCms(bigrams);
+    const cmsT = buildCms(trigrams);
 
     self.postMessage({
       shardId,
-      mgTopK,
-      cms: {
+      uTopK,
+      bTopK,
+      tTopK,
+      cmsU: {
         depth: CMS_DEPTH,
         width: CMS_WIDTH,
-        table: Array.from(cmsTable),
+        table: Array.from(cmsU),
+      },
+      cmsB: {
+        depth: CMS_DEPTH,
+        width: CMS_WIDTH,
+        table: Array.from(cmsB),
+      },
+      cmsT: {
+        depth: CMS_DEPTH,
+        width: CMS_WIDTH,
+        table: Array.from(cmsT),
       },
       totalTokens,
     });
