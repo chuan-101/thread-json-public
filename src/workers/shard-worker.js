@@ -69,9 +69,25 @@ function buildCms(tokens) {
 }
 
 self.onmessage = async (event) => {
-  const { shardId, text, stopwords, mask } = event.data || {};
+  const { shardId, text, messages, stopwords, mask, cutoff } = event.data || {};
   try {
-    const masked = applyMask(typeof text === 'string' ? text : '', mask);
+    const effectiveCutoff = typeof cutoff === 'number' && Number.isFinite(cutoff) ? cutoff : null;
+    let sourceText = typeof text === 'string' ? text : '';
+    if (Array.isArray(messages)) {
+      const pieces = [];
+      for (const msg of messages) {
+        if (!msg) continue;
+        const msgText = typeof msg.text === 'string' ? msg.text : '';
+        if (!msgText) continue;
+        const ts = typeof msg.ts === 'number' && Number.isFinite(msg.ts) ? msg.ts : null;
+        if (effectiveCutoff != null && (ts == null || ts < effectiveCutoff)) {
+          continue;
+        }
+        pieces.push(msgText);
+      }
+      sourceText = pieces.join('\n');
+    }
+    const masked = applyMask(sourceText, mask);
     const stopwordSet = createStopwordSet(stopwords);
     const tokens = tokenize(masked, stopwordSet);
     const totalTokens = tokens.length;
