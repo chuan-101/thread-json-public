@@ -2,7 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { threeMonthCutoff, filterMessagesByWindow } from '../src/stats/models.js';
-import { resetYearAgg, bumpYearAgg, finalizeYearAgg } from '../src/stats/timeline.js';
+import {
+  resetYearAgg,
+  bumpYearAgg,
+  finalizeYearAgg,
+  computeYearlyMetrics,
+} from '../src/stats/timeline.js';
 import { mergePartials, scoreCandidates, buildTopViews, reconcileTopViews } from '../src/stats/merge.js';
 import { tokenize, WHITELIST } from '../src/stats/tokenize.js';
 
@@ -59,6 +64,46 @@ test('yearly overview aggregates message counts and activity metrics', () => {
 
   resetYearAgg();
   assert.deepEqual(finalizeYearAgg(), {}, 'reset clears accumulator state');
+});
+
+test('computeYearlyMetrics derives display-friendly yearly stats', () => {
+  resetYearAgg();
+  const jan1 = Date.UTC(2024, 0, 1);
+  const feb2 = Date.UTC(2024, 1, 2);
+  const mar3 = Date.UTC(2024, 2, 3);
+
+  bumpYearAgg(jan1, 'assistant', 120, 1);
+  bumpYearAgg(feb2, 'user', 90, 0);
+  bumpYearAgg(mar3, 'assistant', 60, 0);
+
+  const summary = finalizeYearAgg();
+  const metrics = computeYearlyMetrics(summary);
+  const stats2024 = metrics[2024];
+
+  assert.ok(stats2024, 'derived metrics include the year entry');
+  assert.equal(stats2024.messages, 3, 'total messages surface directly');
+  assert.equal(
+    stats2024.avgCharsPerActiveDay,
+    90,
+    'average characters per active day rounds to a single decimal place',
+  );
+  assert.equal(stats2024.mostActiveMonth, 1, 'January carries the most characters');
+  assert.equal(
+    stats2024.avgAssistantMsgLen,
+    90,
+    'assistant message averages divide assistant characters by assistant messages',
+  );
+  assert.ok(stats2024.activeDays instanceof Set, 'active days remain a Set copy');
+  assert.notStrictEqual(
+    stats2024.activeDays,
+    summary[2024].activeDays,
+    'active day Set is copied for isolation',
+  );
+  assert.deepEqual(
+    stats2024.charsByMonth,
+    summary[2024].charsByMonth,
+    'monthly arrays are copied while preserving values',
+  );
 });
 
 test('mergePartials unions candidates by n-gram order and preserves determinism', () => {
