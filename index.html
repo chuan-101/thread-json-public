@@ -72,6 +72,22 @@
     table.data-table td.streak{white-space:nowrap;}
     table.data-table td .small{font-size:12px;}
 
+    .yr-table{width:100%;border-collapse:separate;border-spacing:0 6px;}
+    .yr-table th,.yr-table td{padding:8px 10px;white-space:nowrap;}
+    .yr-table .full{display:inline;}
+    .yr-table .abbr{display:none;}
+
+    @media (max-width:480px){
+      .yr-table .full{display:none;}
+      .yr-table .abbr{display:inline;}
+      .yr-table th,.yr-table td{padding:6px 8px;font-size:13px;}
+      .yr-table.responsive{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+      .yr-table.responsive thead{display:none;}
+      .yr-table.responsive tr{display:grid;grid-template-columns:1fr 1fr;background:var(--card-bg);border-radius:12px;padding:8px;}
+      .yr-table.responsive td{white-space:nowrap;}
+      .yr-table.responsive td::before{content:attr(data-label);opacity:.6;margin-right:6px;}
+    }
+
     /* 无障碍隐藏原生 file 输入，仅保留 label 按钮触发 */
 .visually-hidden{
   position:absolute; width:1px; height:1px; padding:0; margin:-1px;
@@ -156,12 +172,21 @@
       <section class="card stack" id="card-yearly">
         <div class="section-title">年度概览</div>
         <div class="table-scroll">
-          <table class="data-table" id="yearly-table">
+          <table class="yr-table" id="yearly-table">
             <thead>
-              <tr><th>年份</th><th class="num">字符数</th><th class="num">图片数</th><th class="num">连续活跃（次数 / 最长）</th></tr>
+              <tr>
+                <th><span class="full">Year</span><span class="abbr">Year</span></th>
+                <th><span class="full">Messages</span><span class="abbr">Msgs</span></th>
+                <th><span class="full">Chars</span><span class="abbr">Char</span></th>
+                <th><span class="full">Images</span><span class="abbr">Img</span></th>
+                <th><span class="full">Avg chars / active day</span><span class="abbr">Avg/Day</span></th>
+                <th><span class="full">Most active month</span><span class="abbr">Top Mo</span></th>
+                <th><span class="full">Avg assistant msg len</span><span class="abbr">Avg A/M</span></th>
+                <th><span class="full">Streaks (count / longest)</span><span class="abbr">Streaks</span></th>
+              </tr>
             </thead>
             <tbody>
-              <tr><td colspan="4" class="muted">暂无统计</td></tr>
+              <tr><td colspan="8" class="muted">暂无统计</td></tr>
             </tbody>
           </table>
         </div>
@@ -230,7 +255,7 @@
     import { WorkerPool } from './src/workers/pool.js';
     import { mergePartials, exactRecount, scoreCandidates, buildTopViews, reconcileTopViews } from './src/stats/merge.js';
     import { threeMonthCutoff, filterMessagesByWindow } from './src/stats/models.js';
-    import { finalizeYearAgg } from './src/stats/timeline.js';
+    import { finalizeYearAgg, computeYearlyMetrics } from './src/stats/timeline.js';
     // —— 主题下拉 —— //
     const themeSel = document.getElementById('theme');
     themeSel.addEventListener('change', ()=> {
@@ -646,6 +671,19 @@
     });
 
     // —— 年度概览渲染 —— //
+    function updateYearlyTableResponsive(){
+      const table = document.getElementById('yearly-table');
+      if (!table || typeof window === 'undefined') return;
+      const responsive = typeof window.matchMedia === 'function'
+        ? window.matchMedia('(max-width: 480px)').matches
+        : window.innerWidth <= 480;
+      table.classList.toggle('responsive', !!responsive);
+    }
+
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('resize', updateYearlyTableResponsive);
+    }
+
     function renderYearlyOverview(summary){
       const tbody = document.querySelector('#yearly-table tbody');
       if (!tbody) return;
@@ -659,74 +697,238 @@
       const numberFormatter = (typeof Intl !== 'undefined' && Intl.NumberFormat)
         ? new Intl.NumberFormat()
         : null;
+      const averageFormatter = (typeof Intl !== 'undefined' && Intl.NumberFormat)
+        ? new Intl.NumberFormat(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+        : null;
+      const zeroAverage = averageFormatter ? averageFormatter.format(0) : '0.0';
       const formatNumber = (value) => {
         if (!Number.isFinite(value)) return '0';
         if (value === 0) return '0';
         return numberFormatter ? numberFormatter.format(value) : String(value);
       };
+      const formatAverage = (value) => {
+        if (!Number.isFinite(value)) return zeroAverage;
+        return averageFormatter ? averageFormatter.format(value) : value.toFixed(1);
+      };
+
+      const columnLabels = {
+        year: 'Year',
+        messages: 'Msgs',
+        chars: 'Char',
+        images: 'Img',
+        avgPerDay: 'Avg/Day',
+        topMonth: 'Top Mo',
+        avgAssistant: 'Avg A/M',
+        streaks: 'Streaks',
+      };
+
+      const resolveActiveDays = (days) => {
+        if (!days) return 0;
+        if (days instanceof Set) return days.size;
+        if (Array.isArray(days)) return days.length;
+        const num = Number(days);
+        return Number.isFinite(num) && num > 0 ? num : 0;
+      };
+
+      const toOrdinal = (value) => {
+        if (typeof value === 'string') {
+          const parts = value.split('-');
+          if (parts.length === 3) {
+            const [y, m, d] = parts.map((part) => Number(part));
+            if ([y, m, d].every((n) => Number.isInteger(n))) {
+              return Date.UTC(y, m - 1, d);
+            }
+          }
+        }
+        const num = Number(value);
+        if (Number.isFinite(num)) {
+          const date = new Date(num);
+          if (!Number.isNaN(date.getTime())) {
+            return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+          }
+        }
+        return null;
+      };
+
+      const computeStreakStats = (days) => {
+        const source = days instanceof Set ? Array.from(days) : Array.isArray(days) ? days : [];
+        if (!source.length) return { streakCount: 0, longestStreak: 0 };
+        const ordinals = source
+          .map((value) => toOrdinal(value))
+          .filter((value) => Number.isFinite(value))
+          .sort((a, b) => a - b);
+        if (!ordinals.length) return { streakCount: 0, longestStreak: 0 };
+        const DAY_MS = 24 * 60 * 60 * 1000;
+        let streakCount = 0;
+        let longest = 0;
+        let current = 0;
+        let previous = null;
+        ordinals.forEach((ordinal) => {
+          if (previous === null || ordinal - previous > DAY_MS) {
+            streakCount += 1;
+            current = 1;
+          } else if (ordinal - previous === DAY_MS) {
+            current += 1;
+          } else {
+            current = Math.max(1, current);
+          }
+          if (current > longest) {
+            longest = current;
+          }
+          previous = ordinal;
+        });
+        if (longest === 0) longest = 1;
+        return { streakCount, longestStreak: longest };
+      };
 
       if (!entries.length) {
         const row = document.createElement('tr');
         const cell = document.createElement('td');
-        cell.colSpan = 4;
+        cell.colSpan = 8;
         cell.className = 'muted';
         cell.textContent = '暂无统计';
         row.appendChild(cell);
         tbody.appendChild(row);
+        updateYearlyTableResponsive();
         return;
       }
 
+      const derived = computeYearlyMetrics(summary);
+      const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
       entries.forEach(([year, value]) => {
         const entry = value || {};
+        const metrics = (derived && derived[year]) || {};
+        const totalMessages = Number.isFinite(metrics.totalMessages)
+          ? metrics.totalMessages
+          : Number(entry.totalMessages) || 0;
+        const assistantMsgs = Number.isFinite(metrics.assistantMsgs)
+          ? metrics.assistantMsgs
+          : Number(entry.assistantMsgs) || 0;
+        const totalChars = Number.isFinite(metrics.totalChars)
+          ? metrics.totalChars
+          : Number(entry.totalChars) || 0;
+        const assistantChars = Number.isFinite(metrics.assistantChars)
+          ? metrics.assistantChars
+          : Number(entry.assistantChars) || 0;
+        const images = Number.isFinite(metrics.images)
+          ? metrics.images
+          : Number(entry.images) || 0;
+        const avgCharsPerActiveDay = Number.isFinite(metrics.avgCharsPerActiveDay)
+          ? metrics.avgCharsPerActiveDay
+          : 0;
+        const mostActiveMonth = Number.isFinite(metrics.mostActiveMonth)
+          ? metrics.mostActiveMonth
+          : 0;
+        const avgAssistantMsgLen = Number.isFinite(metrics.avgAssistantMsgLen)
+          ? metrics.avgAssistantMsgLen
+          : 0;
         const row = document.createElement('tr');
 
+        const activeDaysSource = metrics.activeDays || entry.activeDays;
+        const activeDayCount = resolveActiveDays(activeDaysSource);
+
         const yearCell = document.createElement('td');
+        yearCell.setAttribute('data-label', columnLabels.year);
         const yearMain = document.createElement('div');
         yearMain.textContent = String(year);
         yearCell.appendChild(yearMain);
-        if (Number.isFinite(entry.activeDays) && entry.activeDays > 0) {
+        if (activeDayCount > 0) {
           const sub = document.createElement('div');
           sub.className = 'small muted';
-          sub.textContent = `活跃天数 ${entry.activeDays}`;
+          sub.textContent = `活跃天数 ${formatNumber(activeDayCount)}`;
           yearCell.appendChild(sub);
         }
         row.appendChild(yearCell);
 
+        const msgsCell = document.createElement('td');
+        msgsCell.className = 'num';
+        msgsCell.setAttribute('data-label', columnLabels.messages);
+        msgsCell.textContent = formatNumber(totalMessages);
+        if (Number.isFinite(assistantMsgs) && assistantMsgs > 0) {
+          const sub = document.createElement('div');
+          sub.className = 'small muted';
+          sub.textContent = `助手 ${formatNumber(assistantMsgs)}`;
+          msgsCell.appendChild(sub);
+        }
+        row.appendChild(msgsCell);
+
         const charsCell = document.createElement('td');
         charsCell.className = 'num';
-        charsCell.textContent = formatNumber(entry.chars);
+        charsCell.setAttribute('data-label', columnLabels.chars);
+        charsCell.textContent = formatNumber(totalChars);
+        if (Number.isFinite(assistantChars) && assistantChars > 0) {
+          const sub = document.createElement('div');
+          sub.className = 'small muted';
+          sub.textContent = `助手 ${formatNumber(assistantChars)}`;
+          charsCell.appendChild(sub);
+        }
         row.appendChild(charsCell);
 
         const imagesCell = document.createElement('td');
         imagesCell.className = 'num';
-        imagesCell.textContent = formatNumber(entry.images);
+        imagesCell.setAttribute('data-label', columnLabels.images);
+        imagesCell.textContent = formatNumber(images);
         row.appendChild(imagesCell);
 
-        const streakCell = document.createElement('td');
-        streakCell.className = 'num streak';
-        if (
-          Number.isFinite(entry.activeDays) && entry.activeDays > 0 &&
-          Number.isFinite(entry.streakCount) && entry.streakCount > 0 &&
-          Number.isFinite(entry.longestStreak) && entry.longestStreak > 0
-        ) {
-          streakCell.textContent = `${entry.streakCount} / ${entry.longestStreak}`;
-        } else if (Number.isFinite(entry.activeDays) && entry.activeDays > 0) {
-          const count = Number.isFinite(entry.streakCount) ? entry.streakCount : 0;
-          const longest = Number.isFinite(entry.longestStreak) ? entry.longestStreak : 0;
-          streakCell.textContent = `${count} / ${longest}`;
+        const avgCell = document.createElement('td');
+        avgCell.className = 'num';
+        avgCell.setAttribute('data-label', columnLabels.avgPerDay);
+        avgCell.textContent = formatAverage(avgCharsPerActiveDay);
+        row.appendChild(avgCell);
+
+        const charsByMonth = Array.isArray(metrics.charsByMonth) ? metrics.charsByMonth : Array.isArray(entry.charsByMonth) ? entry.charsByMonth : [];
+        const topMonthCell = document.createElement('td');
+        topMonthCell.className = 'num';
+        topMonthCell.setAttribute('data-label', columnLabels.topMonth);
+        if (Number.isInteger(mostActiveMonth) && mostActiveMonth > 0) {
+          const idx = Math.min(mostActiveMonth - 1, monthLabels.length - 1);
+          const monthLabel = monthLabels[idx] || `${mostActiveMonth}`;
+          const charsForMonth = Number(charsByMonth[idx]);
+          const main = document.createElement('div');
+          main.textContent = monthLabel;
+          topMonthCell.appendChild(main);
+          if (Number.isFinite(charsForMonth) && charsForMonth > 0) {
+            const sub = document.createElement('div');
+            sub.className = 'small muted';
+            sub.textContent = formatNumber(charsForMonth);
+            topMonthCell.appendChild(sub);
+          }
         } else {
-          streakCell.textContent = '—';
+          topMonthCell.textContent = '—';
         }
-        if (Number.isFinite(entry.activeDays) && entry.activeDays > 0) {
-          streakCell.title = `活跃天数 ${entry.activeDays}`;
+        row.appendChild(topMonthCell);
+
+        const assistantAvgCell = document.createElement('td');
+        assistantAvgCell.className = 'num';
+        assistantAvgCell.setAttribute('data-label', columnLabels.avgAssistant);
+        assistantAvgCell.textContent = formatAverage(avgAssistantMsgLen);
+        row.appendChild(assistantAvgCell);
+
+        const streakCell = document.createElement('td');
+        streakCell.className = 'streak num';
+        streakCell.setAttribute('data-label', columnLabels.streaks);
+        const streakStats = computeStreakStats(activeDaysSource);
+        const streakMain = document.createElement('div');
+        const streakCountText = formatNumber(streakStats.streakCount || 0);
+        const longestText = formatNumber(streakStats.longestStreak || 0);
+        streakMain.textContent = `${streakCountText}/${longestText}`;
+        streakCell.appendChild(streakMain);
+        if (activeDayCount > 0) {
+          const sub = document.createElement('div');
+          sub.className = 'small muted';
+          sub.textContent = `活跃天数 ${formatNumber(activeDayCount)}`;
+          streakCell.appendChild(sub);
         }
         row.appendChild(streakCell);
 
         tbody.appendChild(row);
       });
+      updateYearlyTableResponsive();
     }
 
     renderYearlyOverview(yearlyState.data);
+    updateYearlyTableResponsive();
 
     // —— 词云渲染占位（接入统计后调用） —— //
     function renderCloud(words){
