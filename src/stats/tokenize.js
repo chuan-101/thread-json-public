@@ -2,11 +2,14 @@ export const FIXED_STOPWORDS = new Set([
   // Chinese fillers & particles
   '啊', '呀', '嘛', '呢', '吧', '的', '了', '着', '就', '还', '也', '而且', '然后', '就是', '以及',
   // Pronouns (keep minimal to avoid over-filtering)
-  '你', '我', '我们', '他们', '她们', '它们','一边','现在','什么','还是','如果','因为','所以','这样','这个','那个','以及','比如','还有','是否','可能','需要','可以','已经','应该','并且',
-'然后','其实','不过','只是','或者','而且','同时','也许','大概','比较',
+  '你', '我', '我们', '他们', '她们', '它们',
+  '一边','现在','什么','还是','如果','因为','所以',
+  '这样','这个','那个','以及','比如','还有','是否','可能','需要','可以','已经','应该','并且',
+  '然后','其实','不过','只是','或者','而且','同时','也许','大概','比较',
   // English common
   'the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'with', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
-  'that', 'this', 'it', 'as', 'at', 'by', 'from','now','what','which','when','why','how','just','really','quite','maybe','perhaps'
+  'that', 'this', 'it', 'as', 'at', 'by', 'from','now','what','which','when','why','how',
+  'just','really','quite','maybe','perhaps'
 ]);
 
 export const ALIAS = new Map([
