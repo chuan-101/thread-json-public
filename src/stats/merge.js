@@ -2,8 +2,9 @@ import { WorkerPool } from '../workers/pool.js';
 import { WHITELIST } from './tokenize.js';
 
 const CMS_SEEDS = [0x1b873593, 0xcc9e2d51, 0x9e3779b1, 0x85ebca6b];
-const RECOUNT_MAX_CHUNK_CHARS = 1_048_576; // ~2MB of UTF-16 text
+const RECOUNT_MAX_CHUNK_CHARS = 4_000_000; // ~8MB of UTF-16 text
 const DEFAULT_LIMIT = 3000;
+const MAX_UNION_CANDIDATES = 3000;
 
 const DEFAULT_SCORING = {
   alpha: 0.3,
@@ -225,22 +226,120 @@ export function mergePartials(partials, options = {}) {
     }
   }
 
-  const combinedSet = new Set();
-  const addToCombined = (token) => {
-    if (!token || combinedSet.has(token)) return;
-    combinedSet.add(token);
+  const tokenInfo = new Map();
+  const baseOrderCounters = { 1: 0, 2: 0, 3: 0 };
+  const supportOrderCounters = { 1: 0, 2: 0, 3: 0 };
+
+  const addToken = (token, n, isBase) => {
+    const normalized = typeof token === 'string' ? token.trim() : '';
+    if (!normalized) return;
+    const existing = tokenInfo.get(normalized);
+    if (existing) {
+      if (isBase && !existing.isBase) {
+        existing.isBase = true;
+        existing.baseOrder = baseOrderCounters[n]++;
+      }
+      return;
+    }
+    if (tokenInfo.size >= MAX_UNION_CANDIDATES) {
+      return;
+    }
+    tokenInfo.set(normalized, {
+      n,
+      isBase: !!isBase,
+      baseOrder: isBase ? baseOrderCounters[n]++ : Number.POSITIVE_INFINITY,
+      supportOrder: !isBase ? supportOrderCounters[n]++ : Number.POSITIVE_INFINITY,
+    });
   };
-  unigrams.forEach(addToCombined);
-  bigrams.forEach(addToCombined);
-  trigrams.forEach(addToCombined);
+
+  const addBundle = (items) => {
+    if (!Array.isArray(items) || !items.length) return;
+    const seen = new Set();
+    const normalizedItems = [];
+    for (const item of items) {
+      if (!item) continue;
+      const normalized = typeof item.token === 'string' ? item.token.trim() : '';
+      if (!normalized || seen.has(normalized)) continue;
+      seen.add(normalized);
+      normalizedItems.push({ token: normalized, n: item.n, isBase: !!item.isBase });
+    }
+    if (!normalizedItems.length) return;
+    let missing = 0;
+    for (const item of normalizedItems) {
+      if (!tokenInfo.has(item.token)) {
+        missing += 1;
+      }
+    }
+    if (tokenInfo.size + missing > MAX_UNION_CANDIDATES) {
+      return;
+    }
+    normalizedItems.forEach((item) => {
+      addToken(item.token, item.n, item.isBase);
+    });
+  };
+
+  trigrams.forEach((token) => {
+    if (tokenInfo.size >= MAX_UNION_CANDIDATES) return;
+    const parts = splitTokens(token);
+    const bundle = [];
+    if (parts.length >= 3) {
+      bundle.push({ token: parts[0], n: 1, isBase: false });
+      bundle.push({ token: parts[1], n: 1, isBase: false });
+      bundle.push({ token: parts[2], n: 1, isBase: false });
+      bundle.push({ token: `${parts[0]} ${parts[1]}`, n: 2, isBase: false });
+      bundle.push({ token: `${parts[1]} ${parts[2]}`, n: 2, isBase: false });
+    }
+    bundle.push({ token, n: 3, isBase: true });
+    addBundle(bundle);
+  });
+
+  bigrams.forEach((token) => {
+    if (tokenInfo.size >= MAX_UNION_CANDIDATES) return;
+    const parts = splitTokens(token);
+    const bundle = [];
+    if (parts.length >= 2) {
+      bundle.push({ token: parts[0], n: 1, isBase: false });
+      bundle.push({ token: parts[1], n: 1, isBase: false });
+    }
+    bundle.push({ token, n: 2, isBase: true });
+    addBundle(bundle);
+  });
+
+  unigrams.forEach((token) => {
+    if (tokenInfo.size >= MAX_UNION_CANDIDATES) return;
+    addBundle([{ token, n: 1, isBase: true }]);
+  });
+
+  const finalByN = { 1: [], 2: [], 3: [] };
+  for (const [token, info] of tokenInfo.entries()) {
+    if (!finalByN[info.n]) {
+      finalByN[info.n] = [];
+    }
+    finalByN[info.n].push({ token, info });
+  }
+
+  const sortBuckets = (bucket) => bucket.sort((a, b) => {
+    if (a.info.isBase !== b.info.isBase) {
+      return a.info.isBase ? -1 : 1;
+    }
+    if (a.info.isBase) {
+      return a.info.baseOrder - b.info.baseOrder;
+    }
+    return a.info.supportOrder - b.info.supportOrder;
+  }).map((entry) => entry.token);
+
+  finalByN[1] = sortBuckets(finalByN[1]);
+  finalByN[2] = sortBuckets(finalByN[2]);
+  finalByN[3] = sortBuckets(finalByN[3]);
+
+  const combinedSet = new Set();
+  finalByN[3].forEach((token) => combinedSet.add(token));
+  finalByN[2].forEach((token) => combinedSet.add(token));
+  finalByN[1].forEach((token) => combinedSet.add(token));
 
   return {
     candidates: Array.from(combinedSet),
-    candidatesByN: {
-      1: unigrams,
-      2: bigrams,
-      3: trigrams,
-    },
+    candidatesByN: finalByN,
     totalTokens,
   };
 }
@@ -261,20 +360,41 @@ function* chunkMessages(messages, chunkSize = RECOUNT_MAX_CHUNK_CHARS) {
   if (!Array.isArray(messages) || !messages.length) return;
   let bucket = [];
   let bucketChars = 0;
+  const flushBucket = () => {
+    if (bucket.length) {
+      const emitted = bucket;
+      bucket = [];
+      bucketChars = 0;
+      return emitted;
+    }
+    return null;
+  };
   for (const msg of messages) {
     const text = msg && typeof msg.text === 'string' ? msg.text : '';
     if (!text) continue;
-    const entryChars = text.length + 1;
+    const entryChars = text.length;
+    if (entryChars > chunkSize) {
+      const emitted = flushBucket();
+      if (emitted) {
+        yield { messages: emitted };
+      }
+      for (const piece of chunkString(text, chunkSize)) {
+        yield { text: piece };
+      }
+      continue;
+    }
     if (bucket.length && bucketChars + entryChars > chunkSize) {
-      yield bucket;
-      bucket = [];
-      bucketChars = 0;
+      const emitted = flushBucket();
+      if (emitted) {
+        yield { messages: emitted };
+      }
     }
     bucket.push(msg);
     bucketChars += entryChars;
   }
-  if (bucket.length) {
-    yield bucket;
+  const emitted = flushBucket();
+  if (emitted) {
+    yield { messages: emitted };
   }
 }
 
@@ -283,8 +403,12 @@ async function* iterateShardChunks(iterShardText, shardId) {
   if (!result) return;
   if (Array.isArray(result.messages)) {
     for (const chunk of chunkMessages(result.messages)) {
-      if (!chunk || !chunk.length) continue;
-      yield { messages: chunk };
+      if (!chunk) continue;
+      if (Array.isArray(chunk.messages) && chunk.messages.length) {
+        yield { messages: chunk.messages };
+      } else if (typeof chunk.text === 'string' && chunk.text) {
+        yield { text: chunk.text };
+      }
     }
     return;
   }

@@ -372,13 +372,15 @@
         iterShardText.cutoff = cutoff;
         iterShardText.mask = mask;
 
+        updateProgressBars({ statsPct: 50, statsPhase: '阶段2 · Recount phrases …' });
+
         const recountMap = await exactRecount(
           merged.candidates,
           iterShardText,
           async ({ doneShards, totalShards }) => {
             if (cancelRequested) return;
             const phasePct = totalShards ? 50 + (doneShards / totalShards) * 50 : 100;
-            updateProgressBars({ statsPct: Math.min(100, phasePct) });
+            updateProgressBars({ statsPct: Math.min(100, phasePct), statsPhase: '阶段2 · Recount phrases …' });
             if (DEBUG_STATS) {
               const elapsedMs = Math.round(now() - recountStart);
               console.debug('[stats]', { phase: 'recount', doneShards, totalShards, elapsedMs });
