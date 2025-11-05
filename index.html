@@ -799,6 +799,30 @@
       entries.forEach(([year, value]) => {
         const entry = value || {};
         const metrics = (derived && derived[year]) || {};
+        const totalMessages = Number.isFinite(metrics.totalMessages)
+          ? metrics.totalMessages
+          : Number(entry.totalMessages) || 0;
+        const assistantMsgs = Number.isFinite(metrics.assistantMsgs)
+          ? metrics.assistantMsgs
+          : Number(entry.assistantMsgs) || 0;
+        const totalChars = Number.isFinite(metrics.totalChars)
+          ? metrics.totalChars
+          : Number(entry.totalChars) || 0;
+        const assistantChars = Number.isFinite(metrics.assistantChars)
+          ? metrics.assistantChars
+          : Number(entry.assistantChars) || 0;
+        const images = Number.isFinite(metrics.images)
+          ? metrics.images
+          : Number(entry.images) || 0;
+        const avgCharsPerActiveDay = Number.isFinite(metrics.avgCharsPerActiveDay)
+          ? metrics.avgCharsPerActiveDay
+          : 0;
+        const mostActiveMonth = Number.isFinite(metrics.mostActiveMonth)
+          ? metrics.mostActiveMonth
+          : 0;
+        const avgAssistantMsgLen = Number.isFinite(metrics.avgAssistantMsgLen)
+          ? metrics.avgAssistantMsgLen
+          : 0;
         const row = document.createElement('tr');
 
         const activeDaysSource = metrics.activeDays || entry.activeDays;
@@ -817,8 +841,6 @@
         }
         row.appendChild(yearCell);
 
-        const totalMessages = Number.isFinite(metrics.messages) ? metrics.messages : Number(entry.totalMessages);
-        const assistantMsgs = Number(entry.assistantMsgs);
         const msgsCell = document.createElement('td');
         msgsCell.className = 'num';
         msgsCell.setAttribute('data-label', columnLabels.messages);
@@ -831,8 +853,6 @@
         }
         row.appendChild(msgsCell);
 
-        const totalChars = Number.isFinite(metrics.totalChars) ? metrics.totalChars : Number(entry.totalChars);
-        const assistantChars = Number(entry.assistantChars);
         const charsCell = document.createElement('td');
         charsCell.className = 'num';
         charsCell.setAttribute('data-label', columnLabels.chars);
@@ -852,21 +872,19 @@
         imagesCell.textContent = formatNumber(images);
         row.appendChild(imagesCell);
 
-        const avgPerDay = Number(metrics.avgCharsPerActiveDay);
         const avgCell = document.createElement('td');
         avgCell.className = 'num';
         avgCell.setAttribute('data-label', columnLabels.avgPerDay);
-        avgCell.textContent = formatAverage(avgPerDay);
+        avgCell.textContent = formatAverage(avgCharsPerActiveDay);
         row.appendChild(avgCell);
 
         const charsByMonth = Array.isArray(metrics.charsByMonth) ? metrics.charsByMonth : Array.isArray(entry.charsByMonth) ? entry.charsByMonth : [];
-        const monthIndex = Number(metrics.mostActiveMonth);
         const topMonthCell = document.createElement('td');
         topMonthCell.className = 'num';
         topMonthCell.setAttribute('data-label', columnLabels.topMonth);
-        if (Number.isInteger(monthIndex) && monthIndex > 0) {
-          const idx = Math.min(monthIndex - 1, monthLabels.length - 1);
-          const monthLabel = monthLabels[idx] || `${monthIndex}`;
+        if (Number.isInteger(mostActiveMonth) && mostActiveMonth > 0) {
+          const idx = Math.min(mostActiveMonth - 1, monthLabels.length - 1);
+          const monthLabel = monthLabels[idx] || `${mostActiveMonth}`;
           const charsForMonth = Number(charsByMonth[idx]);
           const main = document.createElement('div');
           main.textContent = monthLabel;
@@ -882,21 +900,20 @@
         }
         row.appendChild(topMonthCell);
 
-        const avgAssistant = Number(metrics.avgAssistantMsgLen);
         const assistantAvgCell = document.createElement('td');
         assistantAvgCell.className = 'num';
         assistantAvgCell.setAttribute('data-label', columnLabels.avgAssistant);
-        assistantAvgCell.textContent = formatAverage(avgAssistant || 0);
+        assistantAvgCell.textContent = formatAverage(avgAssistantMsgLen);
         row.appendChild(assistantAvgCell);
 
         const streakCell = document.createElement('td');
-        streakCell.className = 'num';
+        streakCell.className = 'streak num';
         streakCell.setAttribute('data-label', columnLabels.streaks);
         const streakStats = computeStreakStats(activeDaysSource);
         const streakMain = document.createElement('div');
         const streakCountText = formatNumber(streakStats.streakCount || 0);
         const longestText = formatNumber(streakStats.longestStreak || 0);
-        streakMain.textContent = `${streakCountText} / ${longestText}天`;
+        streakMain.textContent = `${streakCountText}/${longestText}`;
         streakCell.appendChild(streakMain);
         if (activeDayCount > 0) {
           const sub = document.createElement('div');
