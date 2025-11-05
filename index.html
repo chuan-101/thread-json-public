@@ -57,6 +57,12 @@
     .cloud span{display:inline-block;padding:2px 4px;border-radius:6px;color:var(--primary);font-weight:800}
     .cloud span[data-w]{opacity: calc(.65 + (.35 * var(--w,1)));}
 
+    .text-toggle{display:flex;gap:8px;align-items:center;}
+    .text-toggle button{border:0;background:none;padding:0;font:inherit;color:var(--text);opacity:.65;cursor:pointer;}
+    .text-toggle button:hover,.text-toggle button:focus-visible{opacity:1;text-decoration:underline;}
+    .text-toggle button.active{font-weight:600;opacity:1;}
+    .text-toggle span{opacity:.4;}
+
     .table-scroll{overflow:auto;}
     table.data-table{width:100%;border-collapse:collapse;min-width:320px;}
     table.data-table thead th{padding:8px 12px;text-align:left;font-weight:600;font-size:13px;border-bottom:1px solid rgba(0,0,0,.12);}
@@ -164,6 +170,11 @@
       <!-- 词云 -->
       <section class="card stack" id="card-cloud">
         <div class="section-title">Top10 词云</div>
+        <div class="text-toggle small" id="cloud-toggle" role="group" aria-label="词云视图切换">
+          <button type="button" data-mode="phrases" class="active" aria-pressed="true">Phrases (default)</button>
+          <span>/</span>
+          <button type="button" data-mode="words" aria-pressed="false">Words only (debug)</button>
+        </div>
         <div class="cloud" id="cloud">
           <!-- 占位渲染 -->
           <span style="font-size:36px;" data-w="1"  style="--w:1">Syzygy</span>
@@ -217,7 +228,7 @@
     import { parseJSONStream } from './src/ingest/stream-parse.js';
     import { clearAll, listShards, readShardMessages } from './src/ingest/db.js';
     import { WorkerPool } from './src/workers/pool.js';
-    import { mergePartials, exactRecount } from './src/stats/merge.js';
+    import { mergePartials, exactRecount, scoreCandidates, buildTopViews, reconcileTopViews } from './src/stats/merge.js';
     import { threeMonthCutoff, filterMessagesByWindow } from './src/stats/models.js';
     import { finalizeYearAgg } from './src/stats/timeline.js';
     // —— 主题下拉 —— //
@@ -320,6 +331,7 @@
 
         const merged = mergePartials(partials);
         statsState.candidates = merged.candidates;
+        statsState.candidatesByN = merged.candidatesByN || { 1: [], 2: [], 3: [] };
         statsState.totalTokens = merged.totalTokens;
 
         if (!statsState.candidates.length) {
@@ -333,6 +345,8 @@
           statsState.counts = new Map();
           statsState.sortedCandidates = [];
           statsState.top10 = [];
+          statsState.candidatesByN = { 1: [], 2: [], 3: [] };
+          statsState.views = { phrases: [], words: [] };
           refreshCloud();
           return;
         }
@@ -359,13 +373,15 @@
         iterShardText.cutoff = cutoff;
         iterShardText.mask = mask;
 
+        updateProgressBars({ statsPct: 50, statsPhase: '阶段2 · Recount phrases …' });
+
         const recountMap = await exactRecount(
           merged.candidates,
           iterShardText,
           async ({ doneShards, totalShards }) => {
             if (cancelRequested) return;
             const phasePct = totalShards ? 50 + (doneShards / totalShards) * 50 : 100;
-            updateProgressBars({ statsPct: Math.min(100, phasePct) });
+            updateProgressBars({ statsPct: Math.min(100, phasePct), statsPhase: '阶段2 · Recount phrases …' });
             if (DEBUG_STATS) {
               const elapsedMs = Math.round(now() - recountStart);
               console.debug('[stats]', { phase: 'recount', doneShards, totalShards, elapsedMs });
@@ -378,10 +394,8 @@
         if (cancelRequested) return;
         statsState.recountTimeMs = recountEnd - recountStart;
         statsState.counts = recountMap;
-        statsState.sortedCandidates = Array.from(recountMap.entries()).sort((a, b) => {
-          if (b[1] !== a[1]) return b[1] - a[1];
-          return a[0].localeCompare(b[0]);
-        });
+        const scored = scoreCandidates(recountMap, statsState.totalTokens);
+        statsState.sortedCandidates = scored;
         updateProgressBars({ statsPct: 100, statsPhase: '完成 · 近90天处理完毕' });
 
         refreshCloud();
@@ -402,6 +416,8 @@
         statsState.top10 = [];
         statsState.totalTokens = 0;
         statsState.recountTimeMs = 0;
+        statsState.candidatesByN = { 1: [], 2: [], 3: [] };
+        statsState.views = { phrases: [], words: [] };
         refreshCloud();
         throw err;
       }
@@ -444,9 +460,12 @@
       counts: new Map(),
       sortedCandidates: [],
       candidates: [],
+      candidatesByN: { 1: [], 2: [], 3: [] },
       totalTokens: 0,
       recountTimeMs: 0,
       top10: [],
+      cloudMode: 'phrases',
+      views: { phrases: [], words: [] },
     };
 
     const yearlyState = {
@@ -461,6 +480,7 @@
     const parseBtn = document.getElementById('btn-parse');
     const cancelBtn = document.getElementById('btn-cancel');
     const parseBtnLabel = parseBtn.textContent;
+    const cloudToggle = document.getElementById('cloud-toggle');
 
     let currentRunPromise = null;
     let currentController = null;
@@ -480,6 +500,34 @@
       cancelBtn.disabled = false;
     };
 
+    function updateCloudToggleButtons(mode) {
+      if (!cloudToggle) return;
+      const nextMode = mode === 'words' ? 'words' : 'phrases';
+      const buttons = cloudToggle.querySelectorAll('button[data-mode]');
+      buttons.forEach((btn) => {
+        const isActive = btn.dataset.mode === nextMode;
+        btn.classList.toggle('active', isActive);
+        btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      });
+    }
+
+    if (cloudToggle) {
+      cloudToggle.addEventListener('click', (event) => {
+        const target = event.target.closest('button[data-mode]');
+        if (!target) return;
+        const mode = target.dataset.mode === 'words' ? 'words' : 'phrases';
+        if (statsState.cloudMode === mode) {
+          updateCloudToggleButtons(mode);
+          return;
+        }
+        statsState.cloudMode = mode;
+        updateCloudToggleButtons(mode);
+        refreshCloud();
+      });
+    }
+
+    updateCloudToggleButtons(statsState.cloudMode);
+
     resetProgressBars();
 
     fileInput.addEventListener('change', () => {
@@ -496,9 +544,11 @@
       statsState.counts.clear();
       statsState.sortedCandidates = [];
       statsState.candidates = [];
+      statsState.candidatesByN = { 1: [], 2: [], 3: [] };
       statsState.totalTokens = 0;
       statsState.recountTimeMs = 0;
       statsState.top10 = [];
+      statsState.views = { phrases: [], words: [] };
       refreshCloud();
       yearlyState.data = {};
       renderYearlyOverview({});
@@ -582,9 +632,11 @@
       statsState.counts.clear();
       statsState.sortedCandidates = [];
       statsState.candidates = [];
+      statsState.candidatesByN = { 1: [], 2: [], 3: [] };
       statsState.totalTokens = 0;
       statsState.recountTimeMs = 0;
       statsState.top10 = [];
+      statsState.views = { phrases: [], words: [] };
       refreshCloud();
       yearlyState.data = {};
       renderYearlyOverview({});
@@ -686,43 +738,74 @@
         host.appendChild(placeholder);
         return;
       }
-      words.forEach(w=>{
+      const maxScore = words.reduce((acc, item) => {
+        const value = Number(item?.score);
+        if (!Number.isFinite(value)) return acc;
+        return Math.max(acc, Math.max(0, value));
+      }, 0);
+      const base = maxScore > 0 ? maxScore : 1;
+      words.forEach((w)=>{
+        const score = Number(w?.score);
+        const weight = Number.isFinite(score) && score > 0 ? score / base : 0;
         const el=document.createElement('span');
         el.textContent=w.text;
-        el.style.fontSize=(14+Math.round(26*w.weight))+'px';
-        el.style.setProperty('--w', w.weight);
-        el.setAttribute('data-w', String(w.weight));
+        el.style.fontSize=(14+Math.round(26*weight))+'px';
+        el.style.setProperty('--w', weight);
+        el.setAttribute('data-w', String(weight));
         host.appendChild(el);
       });
     }
-    // renderCloud([{text:'Syzygy',weight:1},{text:'听话',weight:.85},{text:'现在',weight:.7},{text:'抱紧',weight:.6}]);
+    // renderCloud([{text:'Syzygy',score:1},{text:'听话',score:.85},{text:'现在',score:.7},{text:'抱紧',score:.6}]);
+
+    function updateTopViews(limit = 10) {
+      const sorted = Array.isArray(statsState.sortedCandidates) ? statsState.sortedCandidates : [];
+      const nextViews = buildTopViews(sorted, limit);
+      statsState.views = reconcileTopViews(statsState.views, nextViews, { maxSwaps: 1 });
+      return statsState.views;
+    }
 
     function refreshCloud(){
-      const sorted = statsState.sortedCandidates || [];
-      if (!sorted.length) {
+      const limit = 10;
+      const views = updateTopViews(limit) || {};
+      const phraseViewRaw = Array.isArray(views.phrases) ? views.phrases : [];
+      const wordViewRaw = Array.isArray(views.words) ? views.words : [];
+      const phraseView = phraseViewRaw.slice(0, limit);
+      const wordView = wordViewRaw.slice(0, limit);
+
+      if (!phraseView.length && !wordView.length) {
         statsState.top10 = [];
         renderCloud([]);
         return;
       }
-      const topEntries = [];
-      for (const [token, count] of sorted) {
-        topEntries.push({ token, count });
-        if (topEntries.length >= 10) break;
-      }
-      if (!topEntries.length) {
+
+      const hasWordView = wordView.length > 0;
+      const defaultView = phraseView.length ? phraseView : wordView;
+      const active = (statsState.cloudMode === 'words' && hasWordView)
+        ? wordView
+        : defaultView;
+
+      if (!active.length) {
         statsState.top10 = [];
         renderCloud([]);
         return;
       }
-      const topCount = topEntries[0]?.count || 1;
-      const words = topEntries.map(({ token, count }) => ({
-        text: token,
-        weight: topCount ? count / topCount : 0,
-        count,
-        pct: statsState.totalTokens ? count / statsState.totalTokens : 0,
-      }));
-      statsState.top10 = words;
-      renderCloud(words.map(({ text, weight }) => ({ text, weight })));
+
+      const topScore = active[0]?.score || 0;
+      const items = active.map((entry) => {
+        const score = Number(entry?.score) || 0;
+        const weight = topScore ? Math.max(0, score) / topScore : 0;
+        return {
+          text: entry.token,
+          score,
+          weight,
+          count: Number(entry?.freq) || 0,
+          pct: statsState.totalTokens ? (Number(entry?.freq) || 0) / statsState.totalTokens : 0,
+          n: entry.n,
+        };
+      });
+
+      statsState.top10 = items;
+      renderCloud(items);
     }
 
     // —— 保存为图片（防截断版） —— //
