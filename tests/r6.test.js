@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { threeMonthCutoff, filterMessagesByWindow } from '../src/stats/models.js';
 import { resetYearAgg, bumpYearAgg, finalizeYearAgg } from '../src/stats/timeline.js';
-import { mergePartials, scoreCandidates } from '../src/stats/merge.js';
+import { mergePartials, scoreCandidates, buildTopViews, reconcileTopViews } from '../src/stats/merge.js';
 import { tokenize, WHITELIST } from '../src/stats/tokenize.js';
 
 const DAY_MS = 24 * 3600 * 1000;
@@ -232,5 +232,121 @@ test('scoreCandidates favors multi-token phrases over single words', () => {
     scored.find((entry) => entry.token === 'hello')?.score
       < scored.find((entry) => entry.token === 'hello world')?.score,
     'unigram score remains below phrase counterpart after down-weighting',
+  );
+});
+
+test('buildTopViews prioritizes phrases and deterministically backfills unigrams', () => {
+  const sorted = [
+    { token: 'alpha beta gamma', n: 3, score: 14.5, freq: 60 },
+    { token: 'alpha beta', n: 2, score: 12, freq: 75 },
+    { token: 'delta epsilon', n: 2, score: 9, freq: 50 },
+    { token: 'theta iota', n: 2, score: 8, freq: 42 },
+    { token: 'alpha', n: 1, score: 3.5, freq: 120 },
+    { token: 'beta', n: 1, score: 3.1, freq: 118 },
+    { token: 'gamma', n: 1, score: 2.9, freq: 110 },
+    { token: 'epsilon', n: 1, score: 2.5, freq: 105 },
+  ];
+
+  const first = buildTopViews(sorted, 5);
+  const second = buildTopViews(sorted, 5);
+
+  assert.deepEqual(first, second, 'repeated builds over the same input remain deterministic');
+  assert.deepEqual(
+    first.phrases.map((entry) => entry.token),
+    ['alpha beta gamma', 'alpha beta', 'delta epsilon', 'theta iota', 'alpha'],
+    'phrases lead and only fall back to unigrams when needed',
+  );
+  const expectedWords = sorted.filter((entry) => entry.n === 1).map((entry) => entry.token).slice(0, 5);
+  assert.deepEqual(
+    first.words.map((entry) => entry.token),
+    expectedWords,
+    'unigram view contains only word candidates and is independent from phrases',
+  );
+  assert.equal(first.words.length, expectedWords.length, 'word view stops once available unigrams are exhausted');
+  assert.ok(first.words.every((entry) => entry.n === 1), 'word view entries are unigrams');
+});
+
+test('reconcileTopViews enforces stable ordering with limited swap tolerance', () => {
+  const basePhrases = [
+    { token: 'alpha beta', score: 12, freq: 80, n: 2 },
+    { token: 'beta gamma', score: 11, freq: 70, n: 2 },
+    { token: 'gamma delta', score: 10, freq: 68, n: 2 },
+  ];
+  const baseWords = [
+    { token: 'alpha', score: 3, freq: 140, n: 1 },
+    { token: 'beta', score: 2.8, freq: 130, n: 1 },
+    { token: 'gamma', score: 2.7, freq: 128, n: 1 },
+  ];
+
+  const prev = { phrases: basePhrases, words: baseWords };
+
+  const oneSwap = {
+    phrases: [
+      { token: 'beta gamma', score: 11, freq: 70, n: 2 },
+      { token: 'alpha beta', score: 12, freq: 80, n: 2 },
+      { token: 'gamma delta', score: 10, freq: 68, n: 2 },
+    ],
+    words: baseWords.map((entry) => ({ ...entry })),
+  };
+  const accepted = reconcileTopViews(prev, oneSwap, { maxSwaps: 1 });
+  assert.deepEqual(
+    accepted.phrases.map((entry) => entry.token),
+    ['beta gamma', 'alpha beta', 'gamma delta'],
+    'single adjacent swap is permitted',
+  );
+
+  const multiSwap = {
+    phrases: [
+      { token: 'gamma delta', score: 10, freq: 68, n: 2 },
+      { token: 'alpha beta', score: 12, freq: 80, n: 2 },
+      { token: 'beta gamma', score: 11, freq: 70, n: 2 },
+    ],
+    words: baseWords.map((entry) => ({ ...entry })),
+  };
+  const rejected = reconcileTopViews(prev, multiSwap, { maxSwaps: 1 });
+  assert.deepEqual(
+    rejected.phrases.map((entry) => entry.token),
+    ['alpha beta', 'beta gamma', 'gamma delta'],
+    'orders requiring more than one swap fall back to the previous view',
+  );
+
+  const metricShift = {
+    phrases: [
+      { token: 'gamma delta', score: 15, freq: 90, n: 2 },
+      { token: 'beta gamma', score: 12, freq: 80, n: 2 },
+      { token: 'alpha beta', score: 6, freq: 60, n: 2 },
+    ],
+    words: baseWords.map((entry) => ({ ...entry })),
+  };
+  const acceptedShift = reconcileTopViews(prev, metricShift, { maxSwaps: 1 });
+  assert.deepEqual(
+    acceptedShift.phrases.map((entry) => entry.token),
+    ['gamma delta', 'beta gamma', 'alpha beta'],
+    'significant metric changes allow new ordering even if swaps exceed tolerance',
+  );
+
+  const newTokens = {
+    phrases: [
+      { token: 'delta epsilon', score: 9, freq: 60, n: 2 },
+      { token: 'epsilon zeta', score: 8, freq: 55, n: 2 },
+      { token: 'zeta eta', score: 7, freq: 50, n: 2 },
+    ],
+    words: baseWords.map((entry) => ({ ...entry })),
+  };
+  const replaced = reconcileTopViews(prev, newTokens, { maxSwaps: 1 });
+  assert.deepEqual(
+    replaced.phrases.map((entry) => entry.token),
+    ['delta epsilon', 'epsilon zeta', 'zeta eta'],
+    'entirely new token sets supersede the previous ordering',
+  );
+  assert.deepEqual(
+    replaced.words.map((entry) => entry.token),
+    ['alpha', 'beta', 'gamma'],
+    'word view remains intact when unchanged',
+  );
+  assert.deepEqual(
+    prev.phrases.map((entry) => entry.token),
+    ['alpha beta', 'beta gamma', 'gamma delta'],
+    'previous snapshot is not mutated during reconciliation',
   );
 });

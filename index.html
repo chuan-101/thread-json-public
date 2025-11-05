@@ -228,7 +228,7 @@
     import { parseJSONStream } from './src/ingest/stream-parse.js';
     import { clearAll, listShards, readShardMessages } from './src/ingest/db.js';
     import { WorkerPool } from './src/workers/pool.js';
-    import { mergePartials, exactRecount, scoreCandidates } from './src/stats/merge.js';
+    import { mergePartials, exactRecount, scoreCandidates, buildTopViews, reconcileTopViews } from './src/stats/merge.js';
     import { threeMonthCutoff, filterMessagesByWindow } from './src/stats/models.js';
     import { finalizeYearAgg } from './src/stats/timeline.js';
     // —— 主题下拉 —— //
@@ -346,6 +346,7 @@
           statsState.sortedCandidates = [];
           statsState.top10 = [];
           statsState.candidatesByN = { 1: [], 2: [], 3: [] };
+          statsState.views = { phrases: [], words: [] };
           refreshCloud();
           return;
         }
@@ -416,6 +417,7 @@
         statsState.totalTokens = 0;
         statsState.recountTimeMs = 0;
         statsState.candidatesByN = { 1: [], 2: [], 3: [] };
+        statsState.views = { phrases: [], words: [] };
         refreshCloud();
         throw err;
       }
@@ -463,6 +465,7 @@
       recountTimeMs: 0,
       top10: [],
       cloudMode: 'phrases',
+      views: { phrases: [], words: [] },
     };
 
     const yearlyState = {
@@ -545,6 +548,7 @@
       statsState.totalTokens = 0;
       statsState.recountTimeMs = 0;
       statsState.top10 = [];
+      statsState.views = { phrases: [], words: [] };
       refreshCloud();
       yearlyState.data = {};
       renderYearlyOverview({});
@@ -632,6 +636,7 @@
       statsState.totalTokens = 0;
       statsState.recountTimeMs = 0;
       statsState.top10 = [];
+      statsState.views = { phrases: [], words: [] };
       refreshCloud();
       yearlyState.data = {};
       renderYearlyOverview({});
@@ -752,44 +757,32 @@
     }
     // renderCloud([{text:'Syzygy',score:1},{text:'听话',score:.85},{text:'现在',score:.7},{text:'抱紧',score:.6}]);
 
-    function refreshCloud(){
+    function updateTopViews(limit = 10) {
       const sorted = Array.isArray(statsState.sortedCandidates) ? statsState.sortedCandidates : [];
-      if (!sorted.length) {
+      const nextViews = buildTopViews(sorted, limit);
+      statsState.views = reconcileTopViews(statsState.views, nextViews, { maxSwaps: 1 });
+      return statsState.views;
+    }
+
+    function refreshCloud(){
+      const limit = 10;
+      const views = updateTopViews(limit) || {};
+      const phraseViewRaw = Array.isArray(views.phrases) ? views.phrases : [];
+      const wordViewRaw = Array.isArray(views.words) ? views.words : [];
+      const phraseView = phraseViewRaw.slice(0, limit);
+      const wordView = wordViewRaw.slice(0, limit);
+
+      if (!phraseView.length && !wordView.length) {
         statsState.top10 = [];
         renderCloud([]);
         return;
       }
-      const limit = 10;
-      const phrases = [];
-      const unigrams = [];
-      for (const entry of sorted) {
-        if (!entry) continue;
-        if (!(entry.score > 0 || entry.n === 1)) continue;
-        if (entry.n > 1 && phrases.length < limit) {
-          phrases.push(entry);
-        }
-        if (entry.n === 1 && unigrams.length < limit) {
-          unigrams.push(entry);
-        }
-        if (phrases.length >= limit && unigrams.length >= limit) {
-          break;
-        }
-      }
 
-      const wordView = unigrams.slice(0, limit);
-      const phraseView = phrases.slice(0, limit);
-      if (phraseView.length < limit) {
-        for (let i = 0; i < wordView.length && phraseView.length < limit; i += 1) {
-          phraseView.push(wordView[i]);
-        }
-      }
-
-      let active = [];
-      if (statsState.cloudMode === 'words') {
-        active = wordView.length ? wordView : phraseView;
-      } else {
-        active = phraseView.length ? phraseView : wordView;
-      }
+      const hasWordView = wordView.length > 0;
+      const defaultView = phraseView.length ? phraseView : wordView;
+      const active = (statsState.cloudMode === 'words' && hasWordView)
+        ? wordView
+        : defaultView;
 
       if (!active.length) {
         statsState.top10 = [];
@@ -799,14 +792,14 @@
 
       const topScore = active[0]?.score || 0;
       const items = active.map((entry) => {
-        const score = Number(entry.score) || 0;
+        const score = Number(entry?.score) || 0;
         const weight = topScore ? Math.max(0, score) / topScore : 0;
         return {
           text: entry.token,
           score,
           weight,
-          count: entry.freq,
-          pct: statsState.totalTokens ? entry.freq / statsState.totalTokens : 0,
+          count: Number(entry?.freq) || 0,
+          pct: statsState.totalTokens ? (Number(entry?.freq) || 0) / statsState.totalTokens : 0,
           n: entry.n,
         };
       });

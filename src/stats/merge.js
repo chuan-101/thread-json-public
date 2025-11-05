@@ -825,3 +825,189 @@ export function scoreCandidates(statsMap, totalTokens, options = {}) {
 
   return usable;
 }
+
+function normalizeTopEntry(entry) {
+  if (!entry) return null;
+  const token = typeof entry.token === 'string' ? entry.token.trim() : '';
+  if (!token) return null;
+  const freq = Number(entry.freq) || 0;
+  const score = Number(entry.score) || 0;
+  const n = Number.isFinite(entry.n) && entry.n > 0 ? Number(entry.n) : ngramLength(token);
+  if (!(score > 0 || n === 1)) {
+    return null;
+  }
+  return {
+    token,
+    score,
+    freq,
+    n,
+  };
+}
+
+function cloneViewList(list) {
+  if (!Array.isArray(list)) return [];
+  return list.map((entry) => ({
+    token: entry && typeof entry.token === 'string' ? entry.token : '',
+    score: Number(entry?.score) || 0,
+    freq: Number(entry?.freq) || 0,
+    n: Number.isFinite(entry?.n) && entry?.n > 0 ? Number(entry.n) : ngramLength(entry?.token || ''),
+  })).filter((entry) => entry.token);
+}
+
+export function buildTopViews(sortedCandidates, limit = 10) {
+  const sorted = Array.isArray(sortedCandidates) ? sortedCandidates : [];
+  const maxItems = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 10;
+  if (!sorted.length || maxItems <= 0) {
+    return { phrases: [], words: [] };
+  }
+
+  const phrases = [];
+  const words = [];
+
+  for (const raw of sorted) {
+    const normalized = normalizeTopEntry(raw);
+    if (!normalized) continue;
+    if (normalized.n > 1 && phrases.length < maxItems) {
+      phrases.push(normalized);
+    }
+    if (normalized.n === 1 && words.length < maxItems) {
+      words.push(normalized);
+    }
+    if (phrases.length >= maxItems && words.length >= maxItems) {
+      break;
+    }
+  }
+
+  const phraseView = phrases.slice(0, maxItems);
+  if (phraseView.length < maxItems) {
+    for (let i = 0; i < words.length && phraseView.length < maxItems; i += 1) {
+      phraseView.push(words[i]);
+    }
+  }
+  const wordView = words.slice(0, maxItems);
+
+  return {
+    phrases: cloneViewList(phraseView),
+    words: cloneViewList(wordView),
+  };
+}
+
+function sameTokenMultiset(prevTokens, nextTokens) {
+  if (!Array.isArray(prevTokens) || !Array.isArray(nextTokens)) {
+    return false;
+  }
+  if (prevTokens.length !== nextTokens.length) {
+    return false;
+  }
+  const counts = new Map();
+  for (const token of prevTokens) {
+    counts.set(token, (counts.get(token) || 0) + 1);
+  }
+  for (const token of nextTokens) {
+    if (!counts.has(token)) {
+      return false;
+    }
+    const next = counts.get(token) - 1;
+    if (next === 0) {
+      counts.delete(token);
+    } else {
+      counts.set(token, next);
+    }
+  }
+  return counts.size === 0;
+}
+
+function withinSwapTolerance(prevTokens, nextTokens, maxSwaps = 1) {
+  if (!Array.isArray(prevTokens) || !Array.isArray(nextTokens)) {
+    return false;
+  }
+  if (prevTokens.length !== nextTokens.length) {
+    return false;
+  }
+  const tolerance = Math.max(0, Math.floor(Number.isFinite(maxSwaps) ? maxSwaps : 1));
+  const mismatches = [];
+  for (let i = 0; i < prevTokens.length; i += 1) {
+    if (prevTokens[i] !== nextTokens[i]) {
+      mismatches.push(i);
+      if (tolerance === 0) {
+        return false;
+      }
+      if (mismatches.length > 2 * tolerance) {
+        return false;
+      }
+    }
+  }
+  if (mismatches.length === 0) {
+    return true;
+  }
+  if (tolerance === 0) {
+    return false;
+  }
+  if (mismatches.length !== 2) {
+    return false;
+  }
+  const [i, j] = mismatches;
+  if (j !== i + 1) {
+    return false;
+  }
+  return prevTokens[i] === nextTokens[j] && prevTokens[j] === nextTokens[i];
+}
+
+function reconcileList(prevList, nextList, maxSwaps) {
+  const next = Array.isArray(nextList) ? nextList : [];
+  if (!next.length) {
+    return [];
+  }
+  if (!Array.isArray(prevList) || !prevList.length) {
+    return cloneViewList(next);
+  }
+  const prevTokens = prevList.map((entry) => entry.token);
+  const nextTokens = next.map((entry) => entry.token);
+  if (!sameTokenMultiset(prevTokens, nextTokens)) {
+    return cloneViewList(next);
+  }
+  if (withinSwapTolerance(prevTokens, nextTokens, maxSwaps)) {
+    return cloneViewList(next);
+  }
+  const prevByToken = new Map();
+  const nextByToken = new Map();
+  prevList.forEach((entry) => {
+    if (entry && entry.token) {
+      prevByToken.set(entry.token, entry);
+    }
+  });
+  next.forEach((entry) => {
+    if (entry && entry.token) {
+      nextByToken.set(entry.token, entry);
+    }
+  });
+  const EPSILON = 1e-6;
+  let metricsIdentical = true;
+  for (const [token, nextEntry] of nextByToken.entries()) {
+    const prevEntry = prevByToken.get(token);
+    if (!prevEntry) {
+      metricsIdentical = false;
+      break;
+    }
+    const scoreDiff = Math.abs((Number(prevEntry.score) || 0) - (Number(nextEntry.score) || 0));
+    const freqDiff = Math.abs((Number(prevEntry.freq) || 0) - (Number(nextEntry.freq) || 0));
+    if (scoreDiff > EPSILON || freqDiff > 0) {
+      metricsIdentical = false;
+      break;
+    }
+  }
+  if (metricsIdentical) {
+    return cloneViewList(prevList);
+  }
+  return cloneViewList(next);
+}
+
+export function reconcileTopViews(previousViews, nextViews, options = {}) {
+  const prev = previousViews && typeof previousViews === 'object' ? previousViews : { phrases: [], words: [] };
+  const next = nextViews && typeof nextViews === 'object' ? nextViews : { phrases: [], words: [] };
+  const maxSwaps = Number.isFinite(options?.maxSwaps) ? options.maxSwaps : 1;
+  return {
+    phrases: reconcileList(prev.phrases, next.phrases, maxSwaps),
+    words: reconcileList(prev.words, next.words, maxSwaps),
+  };
+}
