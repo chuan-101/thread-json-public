@@ -158,7 +158,7 @@
         <div class="table-scroll">
           <table class="data-table" id="yearly-table">
             <thead>
-              <tr><th>年份</th><th class="num">字符数</th><th class="num">图片数</th><th class="num">连续活跃（次数 / 最长）</th></tr>
+              <tr><th>年份</th><th class="num">消息数</th><th class="num">字符数</th><th class="num">图片 / 高峰月</th></tr>
             </thead>
             <tbody>
               <tr><td colspan="4" class="muted">暂无统计</td></tr>
@@ -680,47 +680,76 @@
         const entry = value || {};
         const row = document.createElement('tr');
 
+        const resolveActiveDays = (days) => {
+          if (!days) return 0;
+          if (days instanceof Set) return days.size;
+          if (Array.isArray(days)) return days.length;
+          const num = Number(days);
+          return Number.isFinite(num) && num > 0 ? num : 0;
+        };
+
+        const activeDayCount = resolveActiveDays(entry.activeDays);
         const yearCell = document.createElement('td');
         const yearMain = document.createElement('div');
         yearMain.textContent = String(year);
         yearCell.appendChild(yearMain);
-        if (Number.isFinite(entry.activeDays) && entry.activeDays > 0) {
+        if (activeDayCount > 0) {
           const sub = document.createElement('div');
           sub.className = 'small muted';
-          sub.textContent = `活跃天数 ${entry.activeDays}`;
+          sub.textContent = `活跃天数 ${formatNumber(activeDayCount)}`;
           yearCell.appendChild(sub);
         }
         row.appendChild(yearCell);
 
+        const totalMessages = Number(entry.totalMessages);
+        const assistantMsgs = Number(entry.assistantMsgs);
+        const msgsCell = document.createElement('td');
+        msgsCell.className = 'num';
+        msgsCell.textContent = formatNumber(totalMessages);
+        if (Number.isFinite(assistantMsgs) && assistantMsgs > 0) {
+          const sub = document.createElement('div');
+          sub.className = 'small muted';
+          sub.textContent = `助手 ${formatNumber(assistantMsgs)}`;
+          msgsCell.appendChild(sub);
+        }
+        row.appendChild(msgsCell);
+
+        const totalChars = Number(entry.totalChars);
+        const assistantChars = Number(entry.assistantChars);
         const charsCell = document.createElement('td');
         charsCell.className = 'num';
-        charsCell.textContent = formatNumber(entry.chars);
+        charsCell.textContent = formatNumber(totalChars);
+        if (Number.isFinite(assistantChars) && assistantChars > 0) {
+          const sub = document.createElement('div');
+          sub.className = 'small muted';
+          sub.textContent = `助手 ${formatNumber(assistantChars)}`;
+          charsCell.appendChild(sub);
+        }
         row.appendChild(charsCell);
 
-        const imagesCell = document.createElement('td');
-        imagesCell.className = 'num';
-        imagesCell.textContent = formatNumber(entry.images);
-        row.appendChild(imagesCell);
+        const activityCell = document.createElement('td');
+        activityCell.className = 'num';
+        const images = Number(entry.images);
+        activityCell.textContent = formatNumber(images);
 
-        const streakCell = document.createElement('td');
-        streakCell.className = 'num streak';
-        if (
-          Number.isFinite(entry.activeDays) && entry.activeDays > 0 &&
-          Number.isFinite(entry.streakCount) && entry.streakCount > 0 &&
-          Number.isFinite(entry.longestStreak) && entry.longestStreak > 0
-        ) {
-          streakCell.textContent = `${entry.streakCount} / ${entry.longestStreak}`;
-        } else if (Number.isFinite(entry.activeDays) && entry.activeDays > 0) {
-          const count = Number.isFinite(entry.streakCount) ? entry.streakCount : 0;
-          const longest = Number.isFinite(entry.longestStreak) ? entry.longestStreak : 0;
-          streakCell.textContent = `${count} / ${longest}`;
-        } else {
-          streakCell.textContent = '—';
+        const charsByMonth = Array.isArray(entry.charsByMonth) ? entry.charsByMonth : [];
+        let bestMonthIndex = -1;
+        let bestMonthValue = 0;
+        charsByMonth.forEach((value, idx) => {
+          const num = Number(value);
+          if (!Number.isFinite(num) || num <= 0) return;
+          if (num > bestMonthValue) {
+            bestMonthValue = num;
+            bestMonthIndex = idx;
+          }
+        });
+        if (bestMonthIndex >= 0) {
+          const sub = document.createElement('div');
+          sub.className = 'small muted';
+          sub.textContent = `高峰月 ${bestMonthIndex + 1} 月 · ${formatNumber(bestMonthValue)}`;
+          activityCell.appendChild(sub);
         }
-        if (Number.isFinite(entry.activeDays) && entry.activeDays > 0) {
-          streakCell.title = `活跃天数 ${entry.activeDays}`;
-        }
-        row.appendChild(streakCell);
+        row.appendChild(activityCell);
 
         tbody.appendChild(row);
       });

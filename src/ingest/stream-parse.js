@@ -125,6 +125,13 @@ export async function parseJSONStream(
     return '';
   };
 
+  const countContentChars = (content) => {
+    if (content == null) return 0;
+    const normalized = String(content).replace(/\r\n?/g, '\n');
+    if (!normalized) return 0;
+    return Array.from(normalized).length;
+  };
+
   const registerImageKey = (seen, key) => {
     const strKey = typeof key === 'string' && key ? key : null;
     if (strKey) {
@@ -300,10 +307,11 @@ export async function parseJSONStream(
       normalizeTs(msg.create_time || msg.update_time || msg.end_turn?.time || msg.ts) ||
       convTs;
     const content = normalizeContent(msg);
+    const contentChars = countContentChars(content);
     const imagesInMsg = countImagesInMessage(msg, content);
 
     if (Number.isFinite(ts)) {
-      bumpYearAgg(ts, role || 'unknown', content, imagesInMsg);
+      bumpYearAgg(ts, role || 'unknown', contentChars, imagesInMsg);
     }
 
     if (aborted || !shouldEmit(msg)) return;
