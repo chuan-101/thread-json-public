@@ -193,11 +193,11 @@
                 <th><span class="full">年份</span><span class="abbr">年份</span></th>
                 <th><span class="full">消息总条数</span><span class="abbr">消息总条数</span></th>
                 <th><span class="full">总字数</span><span class="abbr">总字数</span></th>
-                <th><span class="full">图片数</span><span class="abbr">图片数</span></th>
+                <th><span class="full">总图片数</span><span class="abbr">总图片数</span></th>
                 <th><span class="full">日均字数</span><span class="abbr">日均字数</span></th>
                 <th><span class="full">最活跃月</span><span class="abbr">最活跃月</span></th>
-                <th><span class="full">GPT平均字数长度</span><span class="abbr">GPT平均字数长度</span></th>
-                <th><span class="full">连续活跃情况</span><span class="abbr">连续活跃情况</span></th>
+                <th><span class="full">GPT平均字数</span><span class="abbr">GPT平均字数</span></th>
+                <th><span class="full">连续活跃</span><span class="abbr">连续活跃</span></th>
               </tr>
             </thead>
             <tbody>
@@ -727,14 +727,14 @@
       };
 
       const columnLabels = {
-        year: 'Year',
-        messages: 'Msgs',
-        chars: 'Char',
-        images: 'Img',
-        avgPerDay: 'Avg/Day',
-        topMonth: 'Top Mo',
-        avgAssistant: 'Avg A/M',
-        streaks: 'Streaks',
+        year: '年份',
+        messages: '消息总条数',
+        chars: '总字数',
+        images: '总图片数',
+        avgPerDay: '日均字数',
+        topMonth: '最活跃月',
+        avgAssistant: 'GPT平均字数',
+        streaks: '连续活跃',
       };
 
       const resolveActiveDays = (days) => {
@@ -809,7 +809,7 @@
       }
 
       const derived = computeYearlyMetrics(summary);
-      const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const monthLabels = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
 
       entries.forEach(([year, value]) => {
         const entry = value || {};
@@ -863,7 +863,7 @@
         if (Number.isFinite(assistantMsgs) && assistantMsgs > 0) {
           const sub = document.createElement('div');
           sub.className = 'small muted';
-          sub.textContent = `助手 ${formatNumber(assistantMsgs)}`;
+          sub.textContent = `GPT ${formatNumber(assistantMsgs)}`;
           msgsCell.appendChild(sub);
         }
         row.appendChild(msgsCell);
@@ -875,7 +875,7 @@
         if (Number.isFinite(assistantChars) && assistantChars > 0) {
           const sub = document.createElement('div');
           sub.className = 'small muted';
-          sub.textContent = `助手 ${formatNumber(assistantChars)}`;
+          sub.textContent = `GPT ${formatNumber(assistantChars)}`;
           charsCell.appendChild(sub);
         }
         row.appendChild(charsCell);
