@@ -77,16 +77,31 @@
     .yr-table .full{display:inline;}
     .yr-table .abbr{display:none;}
 
-    @media (max-width:480px){
-      .yr-table .full{display:none;}
-      .yr-table .abbr{display:inline;}
-      .yr-table th,.yr-table td{padding:6px 8px;font-size:13px;}
-      .yr-table.responsive{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
-      .yr-table.responsive thead{display:none;}
-      .yr-table.responsive tr{display:grid;grid-template-columns:1fr 1fr;background:var(--card-bg);border-radius:12px;padding:8px;}
-      .yr-table.responsive td{white-space:nowrap;}
-      .yr-table.responsive td::before{content:attr(data-label);opacity:.6;margin-right:6px;}
-    }
+@media (max-width:480px){
+  .yr-table.responsive{display:flex;flex-direction:column;gap:12px;}
+  .yr-table.responsive thead{display:none;}
+  .yr-table.responsive tr{
+    display:block;
+    background:var(--card-bg);
+    border-radius:12px;
+    padding:12px;
+    box-shadow:var(--shadow);
+  }
+  .yr-table.responsive td{
+    display:flex;
+    justify-content:space-between;
+    padding:6px 0;
+    border-bottom:1px solid rgba(0,0,0,.05);
+    font-size:13px;
+  }
+  .yr-table.responsive td:last-child{border-bottom:none;}
+  .yr-table.responsive td::before{
+    content:attr(data-label);
+    opacity:.65;
+    font-weight:600;
+  }
+  .yr-table.responsive td.num{text-align:right;font-weight:500;}
+}
 
     /* 无障碍隐藏原生 file 输入，仅保留 label 按钮触发 */
 .visually-hidden{
