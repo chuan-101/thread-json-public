@@ -103,6 +103,7 @@ export async function parseJSONStream(
 
 const normalizeContent = (msg) => {
   const texts = [];
+  console.log('🔍 normalizeContent 被调用了', msg);
   
   const pushText = (val) => {
     if (typeof val === 'string' && val) {
