@@ -101,29 +101,76 @@ export async function parseJSONStream(
     return num;
   };
 
-  const normalizeContent = (msg) => {
-    const { content } = msg || {};
-    if (content == null) return '';
-    if (typeof content === 'string') return content;
-    if (Array.isArray(content)) {
-      return content
-        .map((part) => (typeof part === 'string' ? part : ''))
-        .filter(Boolean)
-        .join('\n\n');
+const normalizeContent = (msg) => {
+  const texts = [];
+  
+  const pushText = (val) => {
+    if (typeof val === 'string' && val) {
+      texts.push(val);
     }
-    if (typeof content === 'object') {
-      if (Array.isArray(content.parts)) {
-        return content.parts
-          .map((part) => (typeof part === 'string' ? part : ''))
-          .filter(Boolean)
-          .join('\n\n');
-      }
-      if (typeof content.text === 'string') {
-        return content.text;
-      }
-    }
-    return '';
   };
+  
+  const { content, parts } = msg || {};
+  
+  // 处理 content 为 string
+  if (typeof content === 'string') {
+    pushText(content);
+  }
+  // 处理 content 为 array
+  else if (Array.isArray(content)) {
+    for (const part of content) {
+      if (typeof part === 'string') {
+        pushText(part);
+      } else if (part && typeof part === 'object') {
+        if (typeof part.text === 'string') {
+          pushText(part.text);
+        } else if (part.type === 'text') {
+          if (typeof part.text === 'string') {
+            pushText(part.text);
+          } else if (part.text && typeof part.text.value === 'string') {
+            pushText(part.text.value);
+          }
+        }
+      }
+    }
+  }
+  
+  // 处理 parts array
+  if (Array.isArray(parts)) {
+    for (const part of parts) {
+      if (typeof part === 'string') {
+        pushText(part);
+      } else if (part && typeof part === 'object' && typeof part.text === 'string') {
+        pushText(part.text);
+      }
+    }
+  }
+  
+  // fallback：如果还是没提取到内容，再试试 content.text
+  if (texts.length === 0 && content && typeof content === 'object') {
+    const maybeText = content.text;
+    if (typeof maybeText === 'string') {
+      pushText(maybeText);
+    } else if (maybeText && typeof maybeText.value === 'string') {
+      pushText(maybeText.value);
+    }
+    if (Array.isArray(content.parts)) {
+      for (const part of content.parts) {
+        if (typeof part === 'string') {
+          pushText(part);
+        } else if (part && typeof part === 'object') {
+          if (typeof part.text === 'string') {
+            pushText(part.text);
+          } else if (part.text && typeof part.text.value === 'string') {
+            pushText(part.text.value);
+          }
+        }
+      }
+    }
+  }
+  
+  return texts.join('\n');
+};
 
   const countContentChars = (content) => {
     if (content == null) return 0;
