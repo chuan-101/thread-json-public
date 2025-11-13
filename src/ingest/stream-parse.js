@@ -101,9 +101,19 @@ export async function parseJSONStream(
     return num;
   };
 
+  const normalizeRole = (msg) => {
+  if (!msg || typeof msg !== 'object') return null;
+  const rawRole = msg.role || msg.author?.role || msg.author;
+  if (!rawRole || typeof rawRole !== 'string') return null;
+  const lower = rawRole.toLowerCase().trim();
+  if (lower === 'user' || lower === 'human') return 'user';
+  if (lower === 'assistant' || lower === 'gpt' || lower === 'chatgpt' || lower === 'model') return 'assistant';
+  if (lower === 'system') return 'system';
+  return null;
+};
+
 const normalizeContent = (msg) => {
   const texts = [];
-  console.log('🔍 normalizeContent 被调用了', msg);
   
   const pushText = (val) => {
     if (typeof val === 'string' && val) {
@@ -350,7 +360,7 @@ const normalizeContent = (msg) => {
 
   const processMessage = (msg, convTs) => {
     if (!msg || typeof msg !== 'object') return;
-    const role = msg.role || msg.author?.role;
+    const role = normalizeRole(msg);
     const ts =
       normalizeTs(msg.create_time || msg.update_time || msg.end_turn?.time || msg.ts) ||
       convTs;
