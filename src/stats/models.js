@@ -45,15 +45,15 @@ export function resetModelAgg() {
 // ts: ms epoch, role: "assistant" | "user" | ...
 export function bumpModelBucket(ts, role, modelName, msgLen, tokenCount) {
   if (role !== 'assistant') return; // model stats only for assistant
-  if (!modelName) return;
+  const family = normModelFamily(modelName);
+  if (!family) return; // ignore tools / unknowns
 
   const timestamp = Number(ts);
   if (!Number.isFinite(timestamp)) return;
 
   const yearMonth = toYearMonth(timestamp);
   const bucket = ensureModelBucket(yearMonth, timestamp);
-  const model = String(modelName);
-  const modelEntry = bucket.models.get(model) || { msgs: 0, chars: 0, tokens: 0 };
+  const modelEntry = bucket.models.get(family) || { msgs: 0, chars: 0, tokens: 0 };
 
   modelEntry.msgs += 1;
   bucket.totals.msgs += 1;
@@ -70,11 +70,11 @@ export function bumpModelBucket(ts, role, modelName, msgLen, tokenCount) {
     bucket.totals.tokens += tokens;
   }
 
-  bucket.models.set(model, modelEntry);
+  bucket.models.set(family, modelEntry);
 }
 
 // options: { window: 'last12months' | 'all', metric: 'msgs' | 'chars' | 'tokens', view: 'family' | 'model' }
-export function getModelShare({ window = 'last12months', metric = 'chars', view = 'family', now, cutoff } = {}) {
+export function getModelShare({ window = 'last12months', metric = 'msgs', view = 'family', now, cutoff } = {}) {
   const timestampNow = Number.isFinite(now) ? now : Date.now();
   const rollingCutoff = cutoff == null ? (window === 'last12months' ? cutoff365Days(timestampNow) : 0) : cutoff;
   const numericCutoff = Number.isFinite(rollingCutoff) ? rollingCutoff : 0;
@@ -92,7 +92,9 @@ export function getModelShare({ window = 'last12months', metric = 'chars', view 
 
     const bucketModels = new Map();
     for (const [model, metrics] of bucket.models.entries()) {
-      const { id, label } = resolveModelView(model, view);
+      const resolved = resolveModelView(model, view);
+      if (!resolved) continue;
+      const { id, label } = resolved;
       const value = selectMetric(metrics, metric);
       if (!value) continue;
       bucketModels.set(id, (bucketModels.get(id) || { model: label, value: 0 }));
@@ -204,40 +206,42 @@ function selectMetric(metrics, metric) {
 }
 
 function normalizeMetric(metric) {
-  if (metric === 'msgs') return 'msgs';
+  if (metric === 'chars') return 'chars';
   if (metric === 'tokens') return 'tokens';
-  return 'chars';
+  return 'msgs';
 }
 
 function resolveModelView(model, view) {
   if (view !== 'family') {
     return { id: model, label: model };
   }
-  const { id, label } = normModel(model);
-  return { id, label };
+  const id = normModelFamily(model);
+  if (!id) return null;
+  return { id, label: id };
 }
 
-function normModel(name) {
-  const raw = typeof name === 'string' ? name.trim() : '';
-  if (!raw) return { id: 'unknown', label: 'unknown' };
-  const cleaned = raw.includes(':') ? raw.split(':').pop() : raw;
-  const noVariant = cleaned.replace(/@(latest|stable)$/i, '');
-  const stripDate = noVariant.replace(/-?20\d{2}-\d{2}-\d{2}.*/i, '');
+// normalize raw model names to a small set of primary families
+export function normModelFamily(raw) {
+  if (!raw) return null;
+  const name = String(raw).toLowerCase();
 
-  const families = [
-    { match: /^gpt-4o-mini/i, id: 'gpt-4o', label: 'gpt-4o' },
-    { match: /^gpt-4o/i, id: 'gpt-4o', label: 'gpt-4o' },
-    { match: /^gpt-4\.1-mini/i, id: 'gpt-4.1', label: 'gpt-4.1' },
-    { match: /^gpt-4\.1/i, id: 'gpt-4.1', label: 'gpt-4.1' },
-    { match: /^gpt-3\.5/i, id: 'gpt-3.5', label: 'gpt-3.5' },
-    { match: /^o3\b/i, id: 'o3', label: 'o3' },
-  ];
-  for (const family of families) {
-    if (family.match.test(stripDate)) {
-      return { id: family.id, label: family.label };
-    }
-  }
-  const simplified = stripDate.replace(/-\d{4,}$/i, '');
-  const normalized = simplified || stripDate || noVariant || cleaned;
-  return { id: normalized, label: normalized };
+  // GPT-4o family
+  if (name.startsWith('gpt-4o')) return 'GPT-4o';
+
+  // GPT-4.1 family
+  if (name.startsWith('gpt-4.1')) return 'GPT-4.1';
+
+  // GPT-4.5 / 4.x variants (optional)
+  if (name.startsWith('gpt-4.5')) return 'GPT-4.5';
+  if (name.startsWith('gpt-4')) return 'GPT-4 (other)';
+
+  // GPT-3.5 family
+  if (name.startsWith('gpt-3.5')) return 'GPT-3.5';
+
+  // o3 / o1 families (if present)
+  if (name.startsWith('o3')) return 'o3';
+  if (name.startsWith('o1')) return 'o1';
+
+  // tools and unknown: treat as non-LLM
+  return null;
 }
