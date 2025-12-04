@@ -1,5 +1,6 @@
 import { appendToShard, finalizeShard } from './db.js';
 import { bumpYearAgg, resetYearAgg } from '../stats/timeline.js';
+import { bumpModelBucket } from '../stats/models.js';
 
 let shardTasks = [];
 
@@ -364,6 +365,7 @@ const normalizeContent = (msg) => {
     const ts =
       normalizeTs(msg.create_time || msg.update_time || msg.end_turn?.time || msg.ts) ||
       convTs;
+    const model = pickModel(msg);
     const content = normalizeContent(msg);
     const contentChars = countContentChars(content);
     const imagesInMsg = countImagesInMessage(msg, content);
@@ -372,13 +374,15 @@ const normalizeContent = (msg) => {
       bumpYearAgg(ts, role || 'unknown', contentChars, imagesInMsg);
     }
 
+    bumpModelBucket(ts, role, model, contentChars);
+
     if (aborted || !shouldEmit(msg)) return;
 
     const payload = {
       role: 'assistant',
       name: msg.name || msg.author?.name || undefined,
       content,
-      model: pickModel(msg),
+      model,
       ts,
     };
     payload.content = payload.content == null ? '' : String(payload.content);

@@ -56,8 +56,8 @@ test('computeModelShare filters to assistant messages within the 12-month window
     { ts: olderTs, role: 'assistant', model: 'gpt-4o', text: 'old' },
   ];
 
-  const { total, entries, buckets } = computeModelShare(messages, { now: baseNow, cutoff });
-  assert.equal(total, 2, 'only assistant messages in the window should contribute');
+  const { total, entries, buckets } = computeModelShare(messages, { now: baseNow, cutoff, metric: 'msgs' });
+  assert.equal(total, 2, 'only assistant messages in the window should contribute when counting messages');
   assert.deepEqual(
     entries.map((e) => e.model),
     ['gpt-3.5', 'gpt-4o'],
@@ -82,7 +82,7 @@ test('computeModelShare ignores models older than 12 months and balances totals'
     { ts: olderThanYear, role: 'assistant', model: 'gpt-4o', text: 'too old' },
   ];
 
-  const { total, entries, buckets } = computeModelShare(messages, { now: baseNow, cutoff });
+  const { total, entries, buckets } = computeModelShare(messages, { now: baseNow, cutoff, metric: 'msgs' });
   assert.equal(total, 2, 'only assistant messages within the last 12 months should count toward totals');
   const shares = Object.fromEntries(entries.map(({ model, share }) => [model, share]));
   assert.ok(Math.abs(shares['gpt-4.1'] - 0.5) < 1e-6, 'mid-year model carries half the share');
