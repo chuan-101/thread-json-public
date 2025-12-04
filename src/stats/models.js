@@ -279,3 +279,8 @@ export function normModelFamily(raw) {
   // Everything else: treat as non-LLM (likely tools)
   return null;
 }
+
+function capitalize(input) {
+  if (!input) return input;
+  return input.charAt(0).toUpperCase() + input.slice(1);
+}
