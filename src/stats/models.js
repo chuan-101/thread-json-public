@@ -165,6 +165,7 @@ export function getModelShare({ window = 'last12months', now, cutoff } = {}) {
       unknownRawModels,
     };
   }
+  const unknownRawModels = getUnknownRawModels();
 
   return {
     total,
@@ -174,6 +175,7 @@ export function getModelShare({ window = 'last12months', now, cutoff } = {}) {
       messages: r.count,
       share: r.count / divisor,
     })),
+    unknownRawModels,
   };
 }
 
