@@ -1122,6 +1122,28 @@ parseBtn.addEventListener('click', async ()=>{
       meta.className = 'models-meta';
       meta.textContent = `窗口：${resolveWindowLabel(modelsState.window)}（仅助手） · 总计 ${formatModelNumber(total)} 条消息`;
       modelsChartHost.appendChild(meta);
+      const unknownRaw = modelsState?.share?.unknownRawModels;
+      if (Array.isArray(unknownRaw) && unknownRaw.length > 0) {
+    const debugSection = document.createElement('div');
+    debugSection.style.cssText = 'margin-top:16px; padding:12px; background:rgba(255,180,0,.1); border-radius:8px; font-size:12px;';
+    
+    const title = document.createElement('div');
+    title.style.fontWeight = '600';
+    title.textContent = `未识别的原始模型值（共 ${unknownRaw.reduce((sum, item) => sum + item.count, 0)} 条）：`;
+    debugSection.appendChild(title);
+    
+    const list = document.createElement('ul');
+    list.style.cssText = 'margin:8px 0 0; padding-left:20px;';
+    unknownRaw.slice(0, 10).forEach(item => {
+      const li = document.createElement('li');
+      li.textContent = `"${item.raw}" — ${item.count} 条`;
+      list.appendChild(li);
+    });
+    debugSection.appendChild(list);
+    
+    modelsChartHost.appendChild(debugSection);
+  }
+}
     }
 
 function recomputeModelShareView() {
