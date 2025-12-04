@@ -45,15 +45,15 @@ export function resetModelAgg() {
 // ts: ms epoch, role: "assistant" | "user" | ...
 export function bumpModelBucket(ts, role, modelName, msgLen, tokenCount) {
   if (role !== 'assistant') return; // model stats only for assistant
-  if (!modelName) return;
+  const family = normModelFamily(modelName);
+  if (!family) return; // ignore tools / unknowns
 
   const timestamp = Number(ts);
   if (!Number.isFinite(timestamp)) return;
 
   const yearMonth = toYearMonth(timestamp);
   const bucket = ensureModelBucket(yearMonth, timestamp);
-  const model = String(modelName);
-  const modelEntry = bucket.models.get(model) || { msgs: 0, chars: 0, tokens: 0 };
+  const modelEntry = bucket.models.get(family) || { msgs: 0, chars: 0, tokens: 0 };
 
   modelEntry.msgs += 1;
   bucket.totals.msgs += 1;
@@ -70,11 +70,11 @@ export function bumpModelBucket(ts, role, modelName, msgLen, tokenCount) {
     bucket.totals.tokens += tokens;
   }
 
-  bucket.models.set(model, modelEntry);
+  bucket.models.set(family, modelEntry);
 }
 
 // options: { window: 'last12months' | 'all', metric: 'msgs' | 'chars' | 'tokens', view: 'family' | 'model' }
-export function getModelShare({ window = 'last12months', metric = 'chars', view = 'family', now, cutoff } = {}) {
+export function getModelShare({ window = 'last12months', metric = 'msgs', view = 'family', now, cutoff } = {}) {
   const timestampNow = Number.isFinite(now) ? now : Date.now();
   const rollingCutoff = cutoff == null ? (window === 'last12months' ? cutoff365Days(timestampNow) : 0) : cutoff;
   const numericCutoff = Number.isFinite(rollingCutoff) ? rollingCutoff : 0;
@@ -206,9 +206,9 @@ function selectMetric(metrics, metric) {
 }
 
 function normalizeMetric(metric) {
-  if (metric === 'msgs') return 'msgs';
+  if (metric === 'chars') return 'chars';
   if (metric === 'tokens') return 'tokens';
-  return 'chars';
+  return 'msgs';
 }
 
 function resolveModelView(model, view) {
