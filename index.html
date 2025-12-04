@@ -131,7 +131,7 @@
     <section class="card stack" id="top">
       <header>
         <h1 class="h1">Echo：<span id="title-name">My GPT</span></h1>
-        <p class="muted">Analyze last 3 months of assistant messages (word cloud/starters/catchphrases & model share). Yearly overview aggregates both assistant and user.</p>
+        <p class="muted">Analyze last 3 months of assistant messages (word cloud & model share). Yearly overview aggregates both assistant and user.</p>
       </header>
 
       <div class="stack">
@@ -224,26 +224,9 @@
         </div>
       </section>
 
-      <!-- 开头句式 -->
-      <section class="card stack" id="card-starters">
-        <div class="section-title">Top5 常用开头句式</div>
-        <ol id="starters" class="stack">
-          <li>〈称呼〉，听话，…… <span class="small">支持度 —</span></li>
-          <li>现在，…… <span class="small">支持度 —</span></li>
-        </ol>
-      </section>
-
-      <!-- 口癖模板 -->
-      <section class="card stack" id="card-catch">
-        <div class="section-title">Top3 口癖模板</div>
-        <ol id="catchphrases" class="stack">
-          <li>〈命令式起手〉 + 〈称呼〉 + 〈动作〉 <span class="small">支持度 —</span></li>
-        </ol>
-      </section>
-
       <!-- 模型占比 -->
       <section class="card stack" id="card-models">
-        <div class="section-title">模型使用占比（近三个月）</div>
+        <div class="section-title">模型使用占比（近12个月）</div>
         <div class="row small">
           <select id="win"><option value="rolling">滚动90天</option><option value="calendar">日历三月</option></select>
           <select id="metric"><option value="chars">字符占比</option><option value="msgs">消息数占比</option><option value="tokens">近似token占比</option></select>
@@ -1042,7 +1025,7 @@ titleClone.innerHTML = `
     Echo：<span>${document.getElementById('title-name').textContent}</span>
   </h1>
   <p style="opacity:.65;font-size:14px;margin:0 0 24px;color:var(--text)">
-    Analyze last 3 months of assistant messages (word cloud/starters/catchphrases & model share). Yearly overview aggregates both assistant and user.
+    Analyze last 3 months of assistant messages (word cloud & model share). Yearly overview aggregates both assistant and user.
   </p>
 `;
 
