@@ -38,18 +38,61 @@ function approximateTokens(text) {
   return tokens.length;
 }
 
+// Try multiple locations on the message to find the LLM model string
+export function extractRawModel(msg) {
+  if (!msg) return null;
+
+  // Direct fields
+  if (msg.model) return String(msg.model);
+
+  // Common metadata locations
+  if (msg.metadata?.model) return String(msg.metadata.model);
+  if (msg.metadata?.default_model) return String(msg.metadata.default_model);
+  if (msg.author_metadata?.model) return String(msg.author_metadata.model);
+  if (msg.model_slug) return String(msg.model_slug);
+
+  // TODO: If you see other fields in our JSON export that clearly hold
+  // the LLM name, add them here.
+
+  return null;
+}
+
 export function resetModelAgg() {
   MODEL_STATE.clear();
 }
 
+const UNKNOWN_RAW_MODELS = new Set();
+
+export function resetUnknownRawModels() {
+  UNKNOWN_RAW_MODELS.clear();
+}
+
+export function getUnknownRawModels() {
+  return Array.from(UNKNOWN_RAW_MODELS.values());
+}
+
+function collectUnknownRawModel(raw) {
+  if (!raw) return;
+  UNKNOWN_RAW_MODELS.add(String(raw));
+}
+
 // ts: ms epoch, role: "assistant" | "user" | ...
-export function bumpModelBucket(ts, role, modelName, msgLen, tokenCount) {
+export function bumpModelBucket(ts, role, msg) {
   if (role !== 'assistant') return; // model stats only for assistant
-  const family = normModelFamily(modelName);
-  if (!family) return; // ignore tools / unknowns
+
+  const raw = extractRawModel(msg);
+  const family = normModelFamily(raw);
+  if (!family) {
+    collectUnknownRawModel(raw); // for debug
+    return; // ignore tools / unknowns
+  }
 
   const timestamp = Number(ts);
   if (!Number.isFinite(timestamp)) return;
+
+  const text = typeof msg?.text === 'string' ? msg.text : '';
+  const msgLen = text.length;
+  const tokenCount = approximateTokens(text);
 
   const yearMonth = toYearMonth(timestamp);
   const bucket = ensureModelBucket(yearMonth, timestamp);
@@ -125,11 +168,7 @@ export function computeModelShare(messages, options = {}) {
   resetModelAgg();
   const filtered = filterMessagesByWindow(messages, cutoff).filter((msg) => msg?.role === 'assistant');
   filtered.forEach((msg) => {
-    const text = typeof msg?.text === 'string' ? msg.text : '';
-    const chars = text.length;
-    const tokens = approximateTokens(text);
-    const model = typeof msg?.model === 'string' && msg.model ? msg.model : 'unknown';
-    bumpModelBucket(msg?.ts, msg?.role, model, chars, tokens);
+    bumpModelBucket(msg?.ts, msg?.role, msg);
   });
 
   const share = getModelShare({ window: windowOpt, now, cutoff });
@@ -206,25 +245,58 @@ function buildBuckets(window, cutoff) {
 // normalize raw model names to a small set of primary families
 export function normModelFamily(raw) {
   if (!raw) return null;
-  const name = String(raw).toLowerCase();
+  const name = String(raw).trim().toLowerCase();
+  if (!name) return null;
 
-  // GPT-4o family
-  if (name.startsWith('gpt-4o')) return 'GPT-4o';
+  // Obvious tool / non-LLM patterns
+  const toolPatterns = [
+    /^python\b/,
+    /^web\.run/,
+    /^browser/,
+    /^actions?:/,
+    /^function/,
+    /^tool/,
+    /^retrieval/,
+    /^file-/,
+    /^speech[-_]/,
+    /^vision[-_]/,
+  ];
+  if (toolPatterns.some((re) => re.test(name))) return null;
 
-  // GPT-4.1 family
-  if (name.startsWith('gpt-4.1')) return 'GPT-4.1';
+  // GPT families (captures gpt-5.1-thinking, gpt-4o-mini, gpt-3.5-turbo, etc.)
+  const gptMatch = name.match(/^gpt-([0-9]+(?:\.[0-9]+)?[a-z]?)/);
+  if (gptMatch) return `GPT-${gptMatch[1]}`;
 
-  // GPT-4.5 / 4.x variants (optional)
-  if (name.startsWith('gpt-4.5')) return 'GPT-4.5';
-  if (name.startsWith('gpt-4')) return 'GPT-4 (other)';
+  // o-series (o1, o3, o1-preview)
+  const oMatch = name.match(/^o[0-9]+(?:\.[0-9]+)?/);
+  if (oMatch) return oMatch[0].toUpperCase();
 
-  // GPT-3.5 family
-  if (name.startsWith('gpt-3.5')) return 'GPT-3.5';
+  // Anthropic Claude family
+  const claudeMatch = name.match(/^claude[-_]?([0-9]+(?:\.[0-9]+)?)/);
+  if (claudeMatch) return `Claude ${claudeMatch[1]}`;
 
-  // o3 / o1 families (if present)
-  if (name.startsWith('o3')) return 'o3';
-  if (name.startsWith('o1')) return 'o1';
+  // Google Gemini family
+  const geminiMatch = name.match(/^gemini[-_]?([0-9.]+[a-z]?)/);
+  if (geminiMatch) return `Gemini ${geminiMatch[1]}`;
+
+  // Meta Llama family
+  const llamaMatch = name.match(/^llama[-_]?([0-9.]+[a-z]?)/);
+  if (llamaMatch) return `Llama ${llamaMatch[1]}`;
+
+  // Mistral / Mixtral
+  const mistralMatch = name.match(/^(mixtral|mistral)[-_]?([0-9a-z.]+)/);
+  if (mistralMatch) return `${capitalize(mistralMatch[1])} ${mistralMatch[2]}`;
+
+  // Perplexity / Command / other vendor-prefixed names
+  const genericMatch = name.match(/^([a-z0-9+.]+)(?:[-_].+)?$/);
+  const looksLikeModel = /[0-9]/.test(name) || name.includes('-') || name.includes('_');
+  if (genericMatch && looksLikeModel) return capitalize(genericMatch[1]);
 
   // tools and unknown: treat as non-LLM
   return null;
+}
+
+function capitalize(input) {
+  if (!input) return input;
+  return input.charAt(0).toUpperCase() + input.slice(1);
 }
