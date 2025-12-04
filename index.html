@@ -1046,6 +1046,10 @@ parseBtn.addEventListener('click', async ()=>{
 
     function renderModelShare() {
       if (!modelsChartHost) return;
+      if (modelsState.share && modelsState.share.unknownRawModels) {
+    console.log('=== 未识别的原始模型值 ===');
+    console.table(modelsState.share.unknownRawModels);
+  }
       modelsChartHost.innerHTML = '';
 
       if (modelsState.loading) {
