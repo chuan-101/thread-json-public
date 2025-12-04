@@ -88,6 +88,8 @@ export function bumpModelBucket(ts, role, msg) {
   if (role !== 'assistant') return; // model stats only for assistant
 
   const raw = extractRawModel(msg);
+  console.log('[DEBUG] 检测到的模型名称:', raw);
+  
   const family = normModelFamily(raw);
   if (!family) {
     collectUnknownRawModel(raw); // for debug
