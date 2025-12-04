@@ -599,29 +599,38 @@
       const fileName = fileInput.files?.[0]?.name || '';
       fileNameSpan.textContent = fileName ? `已选择：${fileName}` : '';
     });
-    parseBtn.addEventListener('click', async ()=>{
-      if(currentRunPromise){ return; }
-      if(!fileInput.files?.[0]){ alert('请选择 JSON 文件'); return; }
+parseBtn.addEventListener('click', async ()=>{
+  if(currentRunPromise){ return; }
+  if(!fileInput.files?.[0]){ alert('请选择 JSON 文件'); return; }
 
-      cancelRequested = false;
-      resetProgressBars();
-      state.mask = !!maskInput?.checked;
-      statsState.counts.clear();
-      statsState.sortedCandidates = [];
-      statsState.candidates = [];
-      statsState.candidatesByN = { 1: [], 2: [], 3: [] };
-      statsState.totalTokens = 0;
-      statsState.recountTimeMs = 0;
-      statsState.top10 = [];
-      statsState.views = { phrases: [], words: [] };
-      refreshCloud();
-      resetModelShareState();
-      renderModelShare();
-      yearlyState.data = {};
-      renderYearlyOverview({});
-      parseBtn.disabled = true;
-      parseBtn.textContent = '解析中…';
-      cancelBtn.disabled = false;
+  cancelRequested = false;
+  
+  // 每次导入前先清空旧数据
+  try {
+    await clearAll();
+  } catch (err) {
+    console.error('清空旧数据失败', err);
+  }
+  
+  resetProgressBars();
+  state.mask = !!maskInput?.checked;
+  statsState.counts.clear();
+  statsState.sortedCandidates = [];
+  statsState.candidates = [];
+  statsState.candidatesByN = { 1: [], 2: [], 3: [] };
+  statsState.totalTokens = 0;
+  statsState.recountTimeMs = 0;
+  statsState.top10 = [];
+  statsState.views = { phrases: [], words: [] };
+  refreshCloud();
+  resetModelShareState();
+  renderModelShare();
+  yearlyState.data = {};
+  renderYearlyOverview({});
+  parseBtn.disabled = true;
+  parseBtn.textContent = '解析中…';
+  cancelBtn.disabled = false;
+  
 
       const file = fileInput.files[0];
       const assistName = (document.getElementById('assist-filter')?.value || '').trim();
