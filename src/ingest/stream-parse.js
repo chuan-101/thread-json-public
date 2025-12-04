@@ -328,19 +328,19 @@ const normalizeContent = (msg) => {
     return total;
   };
 
-  const pickModel = (msg) => {
-    if (!msg || typeof msg !== 'object') return undefined;
-    const meta = msg.metadata || {};
-    return (
-      msg.model ||
-      msg.model_slug ||
-      msg.recipient ||
-      meta.model_slug ||
-      meta.model ||
-      meta.default_model_slug ||
-      undefined
-    ) || undefined;
-  };
+const pickModel = (msg) => {
+  if (!msg || typeof msg !== 'object') return undefined;
+  const meta = msg.metadata || {};
+  return (
+    msg.model ||
+    msg.model_slug ||
+    meta.model_slug ||
+    meta.default_model_slug ||
+    meta.model ||
+    msg.recipient ||
+    undefined
+  ) || undefined;
+};
 
   const shouldEmit = (msg) => {
     if (!msg || typeof msg !== 'object') return false;
