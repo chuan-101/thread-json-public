@@ -161,7 +161,33 @@ test('model extraction and normalization pull from multiple metadata locations a
     'normalized families appear in the share rows',
   );
 
-  assert.ok(getUnknownRawModels().includes('web.run'), 'unknown/tool-like raw models are collected for debugging');
+  const unknown = getUnknownRawModels();
+  assert.ok(unknown.some((entry) => entry.raw === 'web.run' && entry.count === 1), 'unknown/tool-like raw models are collected for debugging');
+});
+
+test('unknown raw models are tracked with counts and surfaced when no LLMs are found', () => {
+  resetUnknownRawModels();
+  const baseNow = Date.UTC(2025, 5, 1);
+  const cutoff = cutoff365Days(baseNow);
+  const recentTs = baseNow - 10 * DAY_MS;
+
+  const messages = [
+    { ts: recentTs, role: 'assistant', model: 'browser.search', text: 'tool call' },
+    { ts: recentTs, role: 'assistant', model: 'browser.search', text: 'tool call' },
+    { ts: recentTs, role: 'assistant', model: 'custom-llm', text: 'maybe model?' },
+  ];
+
+  const { total, rows, unknownRawModels } = computeModelShare(messages, { now: baseNow, cutoff });
+  assert.equal(total, 0, 'no LLM-like entries should yield zero total');
+  assert.deepEqual(rows, [], 'rows should be empty when no LLMs are detected');
+  assert.ok(
+    unknownRawModels.some((entry) => entry.raw === 'browser.search' && entry.count === 2),
+    'repeated unknown entries increment their counts',
+  );
+  assert.ok(
+    unknownRawModels.some((entry) => entry.raw === 'custom-llm' && entry.count === 1),
+    'distinct unknown strings are preserved in the debug list',
+  );
 });
 
 test('computeModelShare excludes tool messages from model share rows', () => {

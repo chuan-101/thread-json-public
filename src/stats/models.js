@@ -61,19 +61,26 @@ export function resetModelAgg() {
   MODEL_STATE.clear();
 }
 
-const UNKNOWN_RAW_MODELS = new Set();
+const unknownModels = new Map();
 
 export function resetUnknownRawModels() {
-  UNKNOWN_RAW_MODELS.clear();
+  unknownModels.clear();
 }
 
-export function getUnknownRawModels() {
-  return Array.from(UNKNOWN_RAW_MODELS.values());
-}
-
-function collectUnknownRawModel(raw) {
+export function collectUnknownRawModel(raw) {
   if (!raw) return;
-  UNKNOWN_RAW_MODELS.add(String(raw));
+  const key = String(raw).trim();
+  if (!key) return;
+  const prev = unknownModels.get(key) || 0;
+  if (prev > 2000) return;
+  unknownModels.set(key, prev + 1);
+}
+
+export function getUnknownRawModels(limit = 10) {
+  return [...unknownModels.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([raw, count]) => ({ raw, count }));
 }
 
 // ts: ms epoch, role: "assistant" | "user" | ...
@@ -144,6 +151,18 @@ export function getModelShare({ window = 'last12months', now, cutoff } = {}) {
   const total = rows.reduce((sum, r) => sum + r.count, 0);
   const divisor = total || 1;
 
+  if (total === 0) {
+    const unknownRawModels = getUnknownRawModels();
+    if (unknownRawModels.length) {
+      console.log('No LLM models detected in last 12 months. Raw model strings seen (top N):', unknownRawModels);
+    }
+    return {
+      total,
+      rows: [],
+      unknownRawModels,
+    };
+  }
+
   return {
     total,
     rows: rows.map((r) => ({
@@ -178,6 +197,7 @@ export function computeModelShare(messages, options = {}) {
     total: share.total,
     rows: share.rows,
     entries: share.rows.map((entry) => ({ model: entry.label, value: entry.messages, share: entry.share })),
+    unknownRawModels: share.unknownRawModels,
     buckets,
   };
 }
