@@ -38,18 +38,61 @@ function approximateTokens(text) {
   return tokens.length;
 }
 
+// Try multiple locations on the message to find the LLM model string
+export function extractRawModel(msg) {
+  if (!msg) return null;
+
+  // Direct fields
+  if (msg.model) return String(msg.model);
+
+  // Common metadata locations
+  if (msg.metadata?.model) return String(msg.metadata.model);
+  if (msg.metadata?.default_model) return String(msg.metadata.default_model);
+  if (msg.author_metadata?.model) return String(msg.author_metadata.model);
+  if (msg.model_slug) return String(msg.model_slug);
+
+  // TODO: If you see other fields in our JSON export that clearly hold
+  // the LLM name, add them here.
+
+  return null;
+}
+
 export function resetModelAgg() {
   MODEL_STATE.clear();
 }
 
+const UNKNOWN_RAW_MODELS = new Set();
+
+export function resetUnknownRawModels() {
+  UNKNOWN_RAW_MODELS.clear();
+}
+
+export function getUnknownRawModels() {
+  return Array.from(UNKNOWN_RAW_MODELS.values());
+}
+
+function collectUnknownRawModel(raw) {
+  if (!raw) return;
+  UNKNOWN_RAW_MODELS.add(String(raw));
+}
+
 // ts: ms epoch, role: "assistant" | "user" | ...
-export function bumpModelBucket(ts, role, modelName, msgLen, tokenCount) {
+export function bumpModelBucket(ts, role, msg) {
   if (role !== 'assistant') return; // model stats only for assistant
-  const family = normModelFamily(modelName);
-  if (!family) return; // ignore tools / unknowns
+
+  const raw = extractRawModel(msg);
+  const family = normModelFamily(raw);
+  if (!family) {
+    collectUnknownRawModel(raw); // for debug
+    return; // ignore tools / unknowns
+  }
 
   const timestamp = Number(ts);
   if (!Number.isFinite(timestamp)) return;
+
+  const text = typeof msg?.text === 'string' ? msg.text : '';
+  const msgLen = text.length;
+  const tokenCount = approximateTokens(text);
 
   const yearMonth = toYearMonth(timestamp);
   const bucket = ensureModelBucket(yearMonth, timestamp);
@@ -125,11 +168,7 @@ export function computeModelShare(messages, options = {}) {
   resetModelAgg();
   const filtered = filterMessagesByWindow(messages, cutoff).filter((msg) => msg?.role === 'assistant');
   filtered.forEach((msg) => {
-    const text = typeof msg?.text === 'string' ? msg.text : '';
-    const chars = text.length;
-    const tokens = approximateTokens(text);
-    const model = typeof msg?.model === 'string' && msg.model ? msg.model : 'unknown';
-    bumpModelBucket(msg?.ts, msg?.role, model, chars, tokens);
+    bumpModelBucket(msg?.ts, msg?.role, msg);
   });
 
   const share = getModelShare({ window: windowOpt, now, cutoff });
@@ -203,28 +242,40 @@ function buildBuckets(window, cutoff) {
     });
 }
 
-// normalize raw model names to a small set of primary families
+// Return a family label like "GPT-4o", "GPT-4.1", "GPT-3.5", "o1", "o3", etc.
+// Return null for tools / unknowns.
 export function normModelFamily(raw) {
   if (!raw) return null;
-  const name = String(raw).toLowerCase();
+  const name = String(raw).toLowerCase().trim();
 
-  // GPT-4o family
-  if (name.startsWith('gpt-4o')) return 'GPT-4o';
+  // Exclude obvious tools
+  if (name.startsWith('web.')) return null;
+  if (name.startsWith('browser.')) return null;
+  if (name.startsWith('python')) return null;
+  if (name.includes('tool')) return null;
 
-  // GPT-4.1 family
-  if (name.startsWith('gpt-4.1')) return 'GPT-4.1';
+  // LLM patterns: anything starting with "gpt-" or "o1"/"o3"
+  if (name.startsWith('gpt-')) {
+    // Take first two segments as family, e.g.
+    // "gpt-5.1-thinking" -> "GPT-5.1"
+    // "gpt-4.1-mini"     -> "GPT-4.1"
+    // "gpt-4o-mini"      -> "GPT-4o"
+    const parts = name.split(/[-:]/); // split on "-" or ":"
+    if (parts.length >= 2) {
+      const base = parts[1]; // "5.1", "4.1", "4o", "3.5", etc.
+      return `GPT-${base}`;
+    }
+    // fallback family
+    return 'GPT (other)';
+  }
 
-  // GPT-4.5 / 4.x variants (optional)
-  if (name.startsWith('gpt-4.5')) return 'GPT-4.5';
-  if (name.startsWith('gpt-4')) return 'GPT-4 (other)';
-
-  // GPT-3.5 family
-  if (name.startsWith('gpt-3.5')) return 'GPT-3.5';
-
-  // o3 / o1 families (if present)
-  if (name.startsWith('o3')) return 'o3';
   if (name.startsWith('o1')) return 'o1';
+  if (name.startsWith('o3')) return 'o3';
 
-  // tools and unknown: treat as non-LLM
+  // If it looks like an "oX" LLM (e.g. "o4-mini"), we can treat "o4" as family:
+  const match = /^o(\d+)/.exec(name);
+  if (match) return `o${match[1]}`;
+
+  // Everything else: treat as non-LLM (likely tools)
   return null;
 }
