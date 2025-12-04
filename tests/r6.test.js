@@ -131,6 +131,27 @@ test('computeModelShare toggles between last12months and all windows', () => {
   );
 });
 
+test('computeModelShare excludes tool messages from model share rows', () => {
+  const baseNow = Date.UTC(2025, 2, 1);
+  const cutoff = cutoff365Days(baseNow);
+  const recentTs = baseNow - 10 * DAY_MS;
+  const midYearTs = baseNow - 200 * DAY_MS;
+
+  const messages = [
+    { ts: recentTs, role: 'assistant', model: 'gpt-4o', text: 'hi' },
+    { ts: midYearTs, role: 'assistant', model: 'gpt-4.1-mini', text: 'hello' },
+    { ts: recentTs, role: 'assistant', model: 'web.run', text: 'tool invocation' },
+    { ts: midYearTs, role: 'assistant', model: 'python', text: 'python tool' },
+    { ts: midYearTs, role: 'assistant', model: 'browser.open', text: 'browser tool' },
+  ];
+
+  const { total, entries } = computeModelShare(messages, { now: baseNow, cutoff });
+  const labels = entries.map((entry) => entry.model);
+
+  assert.equal(total, 2, 'only recognized LLM families should contribute to totals');
+  assert.deepEqual(labels, ['GPT-4.1', 'GPT-4o'], 'tool-only models are excluded from the share rows');
+});
+
 test('yearly overview aggregates message counts and activity metrics', () => {
   resetYearAgg();
   const jan1 = Date.UTC(2023, 0, 1);
