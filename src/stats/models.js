@@ -124,10 +124,13 @@ export function getModelShare({ window = 'last12months', metric = 'chars', view 
 
 export function computeModelShare(messages, options = {}) {
   const now = typeof options?.now === 'number' && Number.isFinite(options.now) ? options.now : Date.now();
-  const cutoff =
-    options && typeof options.cutoff === 'number' && Number.isFinite(options.cutoff)
-      ? options.cutoff
-      : cutoff365Days(now);
+  const windowOpt = options?.window === 'all' ? 'all' : 'last12months';
+  let cutoff;
+  if (options && typeof options.cutoff === 'number' && Number.isFinite(options.cutoff)) {
+    cutoff = options.cutoff;
+  } else {
+    cutoff = windowOpt === 'last12months' ? cutoff365Days(now) : 0;
+  }
   const metric = normalizeMetric(options?.metric);
   const view = options?.view === 'family' ? 'family' : 'model';
 
@@ -141,19 +144,19 @@ export function computeModelShare(messages, options = {}) {
     bumpModelBucket(msg?.ts, msg?.role, model, chars, tokens);
   });
 
-    const share = getModelShare({ window: 'last12months', metric, view, now, cutoff });
-    return {
-      total: share.total,
-      entries: share.entries.map((entry) => ({ model: entry.label, value: entry.value, share: entry.pct })),
-      buckets: share.buckets.map((bucket) => ({
-        key: bucket.key,
-        start: bucket.start,
-        end: bucket.end,
-        total: bucket.total,
-        models: bucket.models.map((m) => ({ model: m.model, value: m.value })),
-      })),
-    };
-  }
+  const share = getModelShare({ window: windowOpt, metric, view, now, cutoff });
+  return {
+    total: share.total,
+    entries: share.entries.map((entry) => ({ model: entry.label, value: entry.value, share: entry.pct })),
+    buckets: share.buckets.map((bucket) => ({
+      key: bucket.key,
+      start: bucket.start,
+      end: bucket.end,
+      total: bucket.total,
+      models: bucket.models.map((m) => ({ model: m.model, value: m.value })),
+    })),
+  };
+}
 
 function ensureModelBucket(key, ts) {
   let bucket = MODEL_STATE.get(key);

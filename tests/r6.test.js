@@ -102,6 +102,35 @@ test('computeModelShare ignores models older than 12 months and balances totals'
   );
 });
 
+test('computeModelShare toggles between last12months and all windows', () => {
+  const baseNow = Date.UTC(2025, 0, 15);
+  const within30Days = baseNow - 30 * DAY_MS;
+  const within180Days = baseNow - 180 * DAY_MS;
+  const eighteenMonthsAgo = baseNow - 550 * DAY_MS;
+
+  const messages = [
+    { ts: within30Days, role: 'assistant', model: 'modelA', text: 'a' },
+    { ts: within180Days, role: 'assistant', model: 'modelB', text: 'b' },
+    { ts: eighteenMonthsAgo, role: 'assistant', model: 'modelC', text: 'c' },
+  ];
+
+  const last12 = computeModelShare(messages, { now: baseNow, window: 'last12months', metric: 'msgs' });
+  assert.equal(last12.total, 2, 'last12months view should omit models older than a year');
+  assert.deepEqual(
+    last12.entries.map((entry) => entry.model),
+    ['modelA', 'modelB'],
+    'only recent models contribute to the rolling window view',
+  );
+
+  const allTime = computeModelShare(messages, { now: baseNow, window: 'all', metric: 'msgs' });
+  assert.equal(allTime.total, 3, 'all-time view should include every assistant message');
+  assert.deepEqual(
+    allTime.entries.map((entry) => entry.model),
+    ['modelA', 'modelB', 'modelC'],
+    'all-time view should surface older models alongside recent ones',
+  );
+});
+
 test('yearly overview aggregates message counts and activity metrics', () => {
   resetYearAgg();
   const jan1 = Date.UTC(2023, 0, 1);

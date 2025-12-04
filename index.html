@@ -239,9 +239,11 @@
 
       <!-- 模型占比 -->
       <section class="card stack" id="card-models">
-        <div class="section-title">Model usage share (last 12 months, assistant only)</div>
+        <div class="section-title">Model usage share (assistant only)</div>
         <div class="row small" style="align-items:center; gap:8px;">
-          <span class="muted">窗口：滚动12个月（仅助手消息）</span>
+          <label class="muted" for="window">窗口：</label>
+          <select id="window"><option value="last12months">滚动12个月</option><option value="all">全部时间</option></select>
+          <span class="muted">仅助手消息</span>
           <select id="metric"><option value="chars">字符占比</option><option value="msgs">消息数占比</option><option value="tokens">近似token占比</option></select>
           <select id="view"><option value="family">家族视图</option><option value="model">具体型号</option></select>
         </div>
@@ -506,6 +508,7 @@
 
     const modelsState = {
       messages: [],
+      window: 'last12months',
       metric: 'chars',
       view: 'family',
       now: Date.now(),
@@ -527,6 +530,7 @@
     const cancelBtn = document.getElementById('btn-cancel');
     const parseBtnLabel = parseBtn.textContent;
     const cloudToggle = document.getElementById('cloud-toggle');
+    const modelWindowSelect = document.getElementById('window');
     const modelMetricSelect = document.getElementById('metric');
     const modelViewSelect = document.getElementById('view');
     const modelsChartHost = document.getElementById('models-chart');
@@ -578,6 +582,21 @@
     updateCloudToggleButtons(statsState.cloudMode);
 
     resetModelShareState();
+    const normalizeWindow = (value) => (value === 'all' ? 'all' : 'last12months');
+    if (modelWindowSelect) {
+      modelsState.window = normalizeWindow(modelWindowSelect.value);
+      modelWindowSelect.addEventListener('change', () => {
+        const next = normalizeWindow(modelWindowSelect.value);
+        if (modelsState.window === next) return;
+        modelsState.window = next;
+        if (modelsState.messages.length && !modelsState.loading) {
+          recomputeModelShareView();
+        } else {
+          renderModelShare();
+        }
+      });
+    }
+
     if (modelMetricSelect) {
       modelsState.metric = normalizeMetric(modelMetricSelect.value);
       modelMetricSelect.addEventListener('change', () => {
@@ -1015,6 +1034,10 @@
       return '字符数';
     }
 
+    function resolveWindowLabel(windowOpt) {
+      return windowOpt === 'all' ? '全部时间' : '滚动12个月';
+    }
+
     function deriveModelFamily(model) {
       const raw = typeof model === 'string' ? model.trim() : '';
       if (!raw) return 'unknown';
@@ -1142,7 +1165,7 @@
 
       const meta = document.createElement('div');
       meta.className = 'models-meta';
-      meta.textContent = `窗口：滚动12个月 · ${resolveMetricLabel(modelsState.metric)}总计 ${formatModelNumber(total)}`;
+      meta.textContent = `窗口：${resolveWindowLabel(modelsState.window)}（仅助手） · ${resolveMetricLabel(modelsState.metric)}总计 ${formatModelNumber(total)}`;
       modelsChartHost.appendChild(meta);
 
       const trend = renderModelTrend(modelsState.share?.buckets || []);
@@ -1154,8 +1177,9 @@
     function recomputeModelShareView() {
       const messages = Array.isArray(modelsState.messages) ? modelsState.messages : [];
       const now = modelsState.now || Date.now();
-      const cutoff = cutoff365Days(now);
-      modelsState.share = computeModelShare(messages, { now, cutoff, metric: modelsState.metric });
+      const windowOpt = modelsState.window === 'all' ? 'all' : 'last12months';
+      const cutoff = windowOpt === 'last12months' ? cutoff365Days(now) : 0;
+      modelsState.share = computeModelShare(messages, { now, cutoff, metric: modelsState.metric, window: windowOpt });
       renderModelShare();
     }
 
@@ -1165,11 +1189,12 @@
       modelsState.error = null;
       renderModelShare();
 
+      const windowOpt = modelsState.window === 'all' ? 'all' : 'last12months';
       const now = Date.now();
-      const cutoff = cutoff365Days(now);
+      const windowCutoff = windowOpt === 'last12months' ? cutoff365Days(now) : 0;
       let shards = [];
       try {
-        shards = await listShards({ cutoff });
+        shards = await listShards();
       } catch (err) {
         modelsState.loading = false;
         modelsState.error = '读取分片失败，无法计算模型占比';
@@ -1183,7 +1208,7 @@
         if (cancelRequested) break;
         try {
           const messages = await readShardMessages(shard.id);
-          const filtered = filterMessagesByWindow(messages, cutoff);
+          const filtered = filterMessagesByWindow(messages, 0);
           filtered.forEach((msg) => {
             collected.push({ ...msg, role: typeof msg?.role === 'string' ? msg.role : 'assistant' });
           });
@@ -1202,7 +1227,12 @@
 
       modelsState.now = now;
       modelsState.messages = collected;
-      modelsState.share = computeModelShare(collected, { now, cutoff, metric: modelsState.metric });
+      modelsState.share = computeModelShare(collected, {
+        now,
+        cutoff: windowCutoff,
+        metric: modelsState.metric,
+        window: windowOpt,
+      });
       modelsState.loading = false;
       renderModelShare();
     }
