@@ -242,57 +242,41 @@ function buildBuckets(window, cutoff) {
     });
 }
 
-// normalize raw model names to a small set of primary families
+// Return a family label like "GPT-4o", "GPT-4.1", "GPT-3.5", "o1", "o3", etc.
+// Return null for tools / unknowns.
 export function normModelFamily(raw) {
   if (!raw) return null;
-  const name = String(raw).trim().toLowerCase();
-  if (!name) return null;
+  const name = String(raw).toLowerCase().trim();
 
-  // Obvious tool / non-LLM patterns
-  const toolPatterns = [
-    /^python\b/,
-    /^web\.run/,
-    /^browser/,
-    /^actions?:/,
-    /^function/,
-    /^tool/,
-    /^retrieval/,
-    /^file-/,
-    /^speech[-_]/,
-    /^vision[-_]/,
-  ];
-  if (toolPatterns.some((re) => re.test(name))) return null;
+  // Exclude obvious tools
+  if (name.startsWith('web.')) return null;
+  if (name.startsWith('browser.')) return null;
+  if (name.startsWith('python')) return null;
+  if (name.includes('tool')) return null;
 
-  // GPT families (captures gpt-5.1-thinking, gpt-4o-mini, gpt-3.5-turbo, etc.)
-  const gptMatch = name.match(/^gpt-([0-9]+(?:\.[0-9]+)?[a-z]?)/);
-  if (gptMatch) return `GPT-${gptMatch[1]}`;
+  // LLM patterns: anything starting with "gpt-" or "o1"/"o3"
+  if (name.startsWith('gpt-')) {
+    // Take first two segments as family, e.g.
+    // "gpt-5.1-thinking" -> "GPT-5.1"
+    // "gpt-4.1-mini"     -> "GPT-4.1"
+    // "gpt-4o-mini"      -> "GPT-4o"
+    const parts = name.split(/[-:]/); // split on "-" or ":"
+    if (parts.length >= 2) {
+      const base = parts[1]; // "5.1", "4.1", "4o", "3.5", etc.
+      return `GPT-${base}`;
+    }
+    // fallback family
+    return 'GPT (other)';
+  }
 
-  // o-series (o1, o3, o1-preview)
-  const oMatch = name.match(/^o[0-9]+(?:\.[0-9]+)?/);
-  if (oMatch) return oMatch[0].toUpperCase();
+  if (name.startsWith('o1')) return 'o1';
+  if (name.startsWith('o3')) return 'o3';
 
-  // Anthropic Claude family
-  const claudeMatch = name.match(/^claude[-_]?([0-9]+(?:\.[0-9]+)?)/);
-  if (claudeMatch) return `Claude ${claudeMatch[1]}`;
+  // If it looks like an "oX" LLM (e.g. "o4-mini"), we can treat "o4" as family:
+  const match = /^o(\d+)/.exec(name);
+  if (match) return `o${match[1]}`;
 
-  // Google Gemini family
-  const geminiMatch = name.match(/^gemini[-_]?([0-9.]+[a-z]?)/);
-  if (geminiMatch) return `Gemini ${geminiMatch[1]}`;
-
-  // Meta Llama family
-  const llamaMatch = name.match(/^llama[-_]?([0-9.]+[a-z]?)/);
-  if (llamaMatch) return `Llama ${llamaMatch[1]}`;
-
-  // Mistral / Mixtral
-  const mistralMatch = name.match(/^(mixtral|mistral)[-_]?([0-9a-z.]+)/);
-  if (mistralMatch) return `${capitalize(mistralMatch[1])} ${mistralMatch[2]}`;
-
-  // Perplexity / Command / other vendor-prefixed names
-  const genericMatch = name.match(/^([a-z0-9+.]+)(?:[-_].+)?$/);
-  const looksLikeModel = /[0-9]/.test(name) || name.includes('-') || name.includes('_');
-  if (genericMatch && looksLikeModel) return capitalize(genericMatch[1]);
-
-  // tools and unknown: treat as non-LLM
+  // Everything else: treat as non-LLM (likely tools)
   return null;
 }
 
