@@ -88,7 +88,6 @@ export function bumpModelBucket(ts, role, msg) {
   if (role !== 'assistant') return; // model stats only for assistant
 
   const raw = extractRawModel(msg);
-  console.log('[DEBUG] 检测到的模型名称:', raw);
   
   const family = normModelFamily(raw);
   if (!family) {
@@ -286,28 +285,28 @@ export function normModelFamily(raw) {
   if (name.length > 50) return null;
   if (/[_]{2,}/.test(name)) return null;
 
-  // GPT 系列：保留完整名称（含 mini/instant/turbo 等后缀）
-  if (name.startsWith('gpt-')) {
-    // 移除日期后缀（如 -2024-08-06）
-    const withoutDate = name.replace(/-\d{4}-\d{2}-\d{2}$/, '');
+// GPT 系列：保留完整名称（含 mini/instant/turbo 等后缀）
+if (name.startsWith('gpt-')) {
+  const withoutDate = name.replace(/-\d{4}-\d{2}-\d{2}$/, '');
+  const parts = withoutDate.split('-');
+  
+  if (parts.length >= 2) {
+    let version = parts[1]; // "4o", "5", "4", "3", "4"（后面可能还有数字）
+    const suffix = parts.slice(2).join('-');
     
-    // 提取主要版本号和后缀
-    const parts = withoutDate.split('-');
-    if (parts.length >= 2) {
-      // parts[0] = "gpt"
-      // parts[1] = "4o" / "4" / "5" / "3.5" 等
-      // parts[2+] = "mini" / "instant" / "turbo" / "preview" 等
-      
-      const version = parts[1]; // "4o", "5", "4", "3.5"
-      const suffix = parts.slice(2).join('-'); // "mini", "instant", "turbo-preview" 等
-      
-      if (suffix) {
-        return `GPT-${version}-${suffix}`;
-      }
+    // 美化：如果后缀是单个数字（如 "5" 在 gpt-4-5 里），合并成小数点格式
+    if (suffix && /^\d+$/.test(suffix)) {
+      version = `${version}.${suffix}`; // "4-5" → "4.5"
       return `GPT-${version}`;
     }
-    return 'GPT (other)';
+    
+    if (suffix) {
+      return `GPT-${version}-${suffix}`;
+    }
+    return `GPT-${version}`;
   }
+  return 'GPT (other)';
+}
 
   // o 系列：保留完整名称（o1/o1-mini/o1-preview/o3/o3-mini/o4 等）
   if (/^o\d+/.test(name)) {
