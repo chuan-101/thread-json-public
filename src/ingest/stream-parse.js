@@ -374,7 +374,7 @@ const normalizeContent = (msg) => {
       bumpYearAgg(ts, role || 'unknown', contentChars, imagesInMsg);
     }
 
-    bumpModelBucket(ts, role, model, contentChars);
+    bumpModelBucket(ts, role, { text: content, model });
 
     if (aborted || !shouldEmit(msg)) return;
 
