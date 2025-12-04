@@ -242,8 +242,10 @@
         <div class="section-title">Model usage share (assistant, last 12 months)</div>
         <p class="small muted">Share is based on assistant message count. Tools (web.run, python, browser.open, etc.) are excluded.</p>
         <div class="row small" style="align-items:center; gap:8px;">
-          <label class="muted" for="window">窗口：</label>
-          <select id="window"><option value="last12months">滚动12个月</option><option value="all">全部时间</option></select>
+          <label class="muted" for="window">统计年份：</label>
+          <select id="window">
+            <option value="all">全部时间</option>
+          </select>
         </div>
         <div id="models-chart" class="table-scroll">
           <span class="muted">暂无模型统计</span>
@@ -575,21 +577,48 @@
 
     updateCloudToggleButtons(statsState.cloudMode);
 
-    resetModelShareState();
-    const normalizeWindow = (value) => (value === 'all' ? 'all' : 'last12months');
-    if (modelWindowSelect) {
-      modelsState.window = normalizeWindow(modelWindowSelect.value);
-      modelWindowSelect.addEventListener('change', () => {
-        const next = normalizeWindow(modelWindowSelect.value);
-        if (modelsState.window === next) return;
-        modelsState.window = next;
-        if (modelsState.messages.length && !modelsState.loading) {
-          recomputeModelShareView();
-        } else {
-          renderModelShare();
-        }
-      });
+resetModelShareState();
+
+// 动态填充年份选项
+function populateYearOptions() {
+  if (!modelWindowSelect) return;
+  const years = Object.keys(yearlyState.data || {})
+    .map(y => Number(y))
+    .filter(y => !isNaN(y))
+    .sort((a, b) => b - a); // 降序排列
+  
+  const currentValue = modelWindowSelect.value;
+  modelWindowSelect.innerHTML = '<option value="all">全部时间</option>';
+  
+  years.forEach(year => {
+    const option = document.createElement('option');
+    option.value = String(year);
+    option.textContent = `${year}年`;
+    modelWindowSelect.appendChild(option);
+  });
+  
+  // 恢复之前的选择（如果还存在）
+  if (years.includes(Number(currentValue))) {
+    modelWindowSelect.value = currentValue;
+  } else if (years.length > 0) {
+    modelWindowSelect.value = String(years[0]); // 默认选最新年份
+  }
+}
+
+if (modelWindowSelect) {
+  modelsState.window = modelWindowSelect.value || 'all';
+  
+  modelWindowSelect.addEventListener('change', () => {
+    const next = modelWindowSelect.value;
+    if (modelsState.window === next) return;
+    modelsState.window = next;
+    if (modelsState.messages.length && !modelsState.loading) {
+      recomputeModelShareView();
+    } else {
+      renderModelShare();
     }
+  });
+}
 
     renderModelShare();
 
@@ -653,6 +682,8 @@ parseBtn.addEventListener('click', async ()=>{
             const yearly = finalizeYearAgg();
             yearlyState.data = yearly;
             renderYearlyOverview(yearly);
+            populateYearOptions();
+            modelsState.window = modelWindowSelect?.value || 'all';
           }
           if (!cancelRequested && parseResult?.aborted !== true) {
             await runStatsPipeline({ mask: state.mask });
@@ -1006,7 +1037,10 @@ parseBtn.addEventListener('click', async ()=>{
     }
 
     function resolveWindowLabel(windowOpt) {
-      return windowOpt === 'all' ? '全部时间' : '滚动12个月';
+        if (windowOpt === 'all') return '全部时间';
+        const year = Number(windowOpt);
+        if (!isNaN(year)) return `${year}年`;
+        return windowOpt;
     }
     
 
@@ -1086,14 +1120,34 @@ parseBtn.addEventListener('click', async ()=>{
       modelsChartHost.appendChild(meta);
     }
 
-    function recomputeModelShareView() {
-      const messages = Array.isArray(modelsState.messages) ? modelsState.messages : [];
-      const now = modelsState.now || Date.now();
-      const windowOpt = modelsState.window === 'all' ? 'all' : 'last12months';
-      const cutoff = windowOpt === 'last12months' ? cutoff365Days(now) : 0;
-      modelsState.share = computeModelShare(messages, { now, cutoff, window: windowOpt });
-      renderModelShare();
+function recomputeModelShareView() {
+  const messages = Array.isArray(modelsState.messages) ? modelsState.messages : [];
+  const windowValue = modelsState.window;
+  
+  let filtered = messages;
+  
+  // 如果选择了具体年份，只统计该年份的消息
+  if (windowValue !== 'all') {
+    const year = Number(windowValue);
+    if (!isNaN(year)) {
+      const yearStart = Date.UTC(year, 0, 1, 0, 0, 0, 0);
+      const yearEnd = Date.UTC(year, 11, 31, 23, 59, 59, 999);
+      filtered = messages.filter(msg => {
+        const ts = typeof msg?.ts === 'number' ? msg.ts : null;
+        return ts != null && ts >= yearStart && ts <= yearEnd;
+      });
     }
+  }
+  
+  // 重新计算模型占比
+  resetModelAgg();
+  filtered.filter(msg => msg?.role === 'assistant').forEach(msg => {
+    bumpModelBucket(msg?.ts, msg?.role, msg);
+  });
+  
+  modelsState.share = getModelShare({ window: windowValue, now: Date.now(), cutoff: 0 });
+  renderModelShare();
+}
 
     async function computeModelUsageShare() {
       if (!modelsChartHost) return;
