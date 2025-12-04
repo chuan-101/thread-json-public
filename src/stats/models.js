@@ -162,8 +162,24 @@ export function getModelShare({ window = 'last12months', now, cutoff } = {}) {
 
   const rows = Array.from(counts.entries())
     .map(([family, count]) => ({ family, count }))
-    .sort((a, b) => b.count - a.count || a.family.localeCompare(b.family));
-
+    .sort((a, b) => {
+    // Tools 和 Unknown 始终排在最后
+    const aIsSpecial = a.family === 'Tools' || a.family === 'Unknown';
+    const bIsSpecial = b.family === 'Tools' || b.family === 'Unknown';
+    
+    if (aIsSpecial && !bIsSpecial) return 1;  // a 排后面
+    if (!aIsSpecial && bIsSpecial) return -1; // b 排后面
+    if (aIsSpecial && bIsSpecial) {
+      // 两个都是特殊类别，Tools 在前，Unknown 在后
+      if (a.family === 'Tools' && b.family === 'Unknown') return -1;
+      if (a.family === 'Unknown' && b.family === 'Tools') return 1;
+      return 0;
+    }
+    
+    // 都是正常模型，按消息数降序
+    if (b.count !== a.count) return b.count - a.count;
+    return a.family.localeCompare(b.family);
+  });
   const total = rows.reduce((sum, r) => sum + r.count, 0);
   const divisor = total || 1;
 
