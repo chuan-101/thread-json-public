@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { threeMonthCutoff, filterMessagesByWindow } from '../src/stats/models.js';
+import {
+  cutoff90Days,
+  cutoff365Days,
+  filterMessagesByWindow,
+  computeModelShare,
+} from '../src/stats/models.js';
 import {
   resetYearAgg,
   bumpYearAgg,
@@ -13,26 +18,87 @@ import { tokenize, WHITELIST } from '../src/stats/tokenize.js';
 
 const DAY_MS = 24 * 3600 * 1000;
 
-test('threeMonthCutoff moves one day when clock shifts', () => {
+test('rolling cutoffs move one day when clock shifts', () => {
   const baseNow = Date.UTC(2024, 5, 1);
-  const cutoff = threeMonthCutoff(baseNow);
-  const forwardCutoff = threeMonthCutoff(baseNow + DAY_MS);
-  const backwardCutoff = threeMonthCutoff(baseNow - DAY_MS);
+  const cutoff90 = cutoff90Days(baseNow);
+  const forwardCutoff = cutoff90Days(baseNow + DAY_MS);
+  const backwardCutoff = cutoff90Days(baseNow - DAY_MS);
 
-  assert.equal(forwardCutoff - cutoff, DAY_MS, 'forward shift should advance cutoff by one day');
-  assert.equal(cutoff - backwardCutoff, DAY_MS, 'backward shift should rewind cutoff by one day');
+  assert.equal(forwardCutoff - cutoff90, DAY_MS, 'forward shift should advance cutoff by one day');
+  assert.equal(cutoff90 - backwardCutoff, DAY_MS, 'backward shift should rewind cutoff by one day');
 
-  const nearCutoffMsg = { ts: cutoff - 1000 };
-  assert.equal(filterMessagesByWindow([nearCutoffMsg], cutoff).length, 0, 'message just before cutoff excluded');
+  const nearCutoffMsg = { ts: cutoff90 - 1000 };
+  assert.equal(filterMessagesByWindow([nearCutoffMsg], cutoff90).length, 0, 'message just before cutoff excluded');
   assert.equal(
     filterMessagesByWindow([nearCutoffMsg], backwardCutoff).length,
     1,
     'rolling backward should include recent-enough message',
   );
+  const yearlyCutoff = cutoff365Days(baseNow);
+  assert.ok(yearlyCutoff < cutoff90, '365-day cutoff extends beyond the 90-day window');
   assert.equal(
     filterMessagesByWindow([nearCutoffMsg], forwardCutoff).length,
     0,
     'rolling forward tightens window and still excludes message',
+  );
+});
+
+test('computeModelShare filters to assistant messages within the 12-month window', () => {
+  const baseNow = Date.UTC(2024, 6, 1);
+  const cutoff = cutoff365Days(baseNow);
+  const withinWindowTs = cutoff + 10_000;
+  const olderTs = cutoff - 10_000;
+
+  const messages = [
+    { ts: withinWindowTs, role: 'assistant', model: 'gpt-4o', text: 'hi' },
+    { ts: withinWindowTs, role: 'user', model: 'gpt-4o', text: 'ignored' },
+    { ts: withinWindowTs, role: 'assistant', model: 'gpt-3.5', text: 'hello there' },
+    { ts: olderTs, role: 'assistant', model: 'gpt-4o', text: 'old' },
+  ];
+
+  const { total, entries, buckets } = computeModelShare(messages, { now: baseNow, cutoff });
+  assert.equal(total, 2, 'only assistant messages in the window should contribute');
+  assert.deepEqual(
+    entries.map((e) => e.model),
+    ['gpt-3.5', 'gpt-4o'],
+    'model entries include assistant-only models ordered deterministically',
+  );
+  assert.ok(Array.isArray(buckets) && buckets.length >= 12, 'buckets cover at least the last year');
+  const bucketWithTotals = buckets.find((b) => b.total > 0);
+  assert.ok(bucketWithTotals, 'buckets contain at least one month with totals');
+  assert.ok(bucketWithTotals.models.some((m) => m.model === 'gpt-4o'), 'monthly bucket tracks model totals');
+});
+
+test('computeModelShare ignores models older than 12 months and balances totals', () => {
+  const baseNow = Date.UTC(2024, 11, 15);
+  const cutoff = cutoff365Days(baseNow);
+  const within30Days = baseNow - 30 * DAY_MS;
+  const within200Days = baseNow - 200 * DAY_MS;
+  const olderThanYear = baseNow - 400 * DAY_MS;
+
+  const messages = [
+    { ts: within30Days, role: 'assistant', model: 'gpt-4o', text: 'recent reply' },
+    { ts: within200Days, role: 'assistant', model: 'gpt-4.1', text: 'mid-year answer' },
+    { ts: olderThanYear, role: 'assistant', model: 'gpt-4o', text: 'too old' },
+  ];
+
+  const { total, entries, buckets } = computeModelShare(messages, { now: baseNow, cutoff });
+  assert.equal(total, 2, 'only assistant messages within the last 12 months should count toward totals');
+  const shares = Object.fromEntries(entries.map(({ model, share }) => [model, share]));
+  assert.ok(Math.abs(shares['gpt-4.1'] - 0.5) < 1e-6, 'mid-year model carries half the share');
+  assert.ok(Math.abs(shares['gpt-4o'] - 0.5) < 1e-6, 'recent model carries half the share');
+
+  const bucketTotals = buckets.reduce((sum, bucket) => sum + bucket.total, 0);
+  assert.equal(bucketTotals, total, 'bucket totals should match the overall total within the window');
+
+  const monthKey = `${new Date(within200Days).getUTCFullYear()}-${String(
+    new Date(within200Days).getUTCMonth() + 1,
+  ).padStart(2, '0')}`;
+  const midBucket = buckets.find((bucket) => bucket.key === monthKey);
+  assert.ok(midBucket && midBucket.total > 0, 'mid-year bucket should accumulate model counts');
+  assert.ok(
+    buckets.filter((bucket) => bucket.end < cutoff).every((bucket) => bucket.total === 0),
+    'no bucket before the 12-month cutoff should accumulate totals',
   );
 });
 
