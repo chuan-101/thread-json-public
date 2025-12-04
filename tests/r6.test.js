@@ -6,6 +6,10 @@ import {
   cutoff365Days,
   filterMessagesByWindow,
   computeModelShare,
+  extractRawModel,
+  normModelFamily,
+  resetUnknownRawModels,
+  getUnknownRawModels,
 } from '../src/stats/models.js';
 import {
   resetYearAgg,
@@ -128,6 +132,61 @@ test('computeModelShare toggles between last12months and all windows', () => {
     allTime.entries.map((entry) => entry.model),
     ['GPT-3.5', 'GPT-4.1', 'GPT-4o'],
     'all-time view should surface older model families alongside recent ones',
+  );
+});
+
+test('model extraction and normalization pull from multiple metadata locations and auto-group variants', () => {
+  resetUnknownRawModels();
+  const messageWithMetadata = { ts: Date.UTC(2025, 0, 2), role: 'assistant', metadata: { default_model: 'gpt-5.1-thinking' }, text: 'a' };
+  const messageWithAuthor = { ts: Date.UTC(2025, 0, 3), role: 'assistant', author_metadata: { model: 'o1-preview' }, text: 'b' };
+  const messageWithSlug = { ts: Date.UTC(2025, 0, 4), role: 'assistant', model_slug: 'web.run', text: 'tool' };
+
+  assert.equal(extractRawModel({ model: 'gpt-4o-mini' }), 'gpt-4o-mini', 'prefers direct model field');
+  assert.equal(extractRawModel(messageWithMetadata), 'gpt-5.1-thinking', 'falls back to default_model metadata');
+  assert.equal(extractRawModel(messageWithAuthor), 'o1-preview', 'checks author_metadata');
+
+  assert.equal(normModelFamily('gpt-4o-mini'), 'GPT-4o', 'gpt variants collapse to GPT-4o family');
+  assert.equal(normModelFamily('o1-preview'), 'o1', 'o-series models group by prefix');
+  assert.equal(normModelFamily('web.run'), null, 'tool signatures are excluded');
+
+  const summary = computeModelShare([messageWithMetadata, messageWithAuthor, messageWithSlug], {
+    now: Date.UTC(2025, 0, 10),
+    window: 'all',
+  });
+
+  assert.equal(summary.total, 2, 'only LLM-like assistant messages should be counted');
+  assert.deepEqual(
+    summary.entries.map((entry) => entry.model).sort(),
+    ['GPT-5.1', 'o1'],
+    'normalized families appear in the share rows',
+  );
+
+  const unknown = getUnknownRawModels();
+  assert.ok(unknown.some((entry) => entry.raw === 'web.run' && entry.count === 1), 'unknown/tool-like raw models are collected for debugging');
+});
+
+test('unknown raw models are tracked with counts and surfaced when no LLMs are found', () => {
+  resetUnknownRawModels();
+  const baseNow = Date.UTC(2025, 5, 1);
+  const cutoff = cutoff365Days(baseNow);
+  const recentTs = baseNow - 10 * DAY_MS;
+
+  const messages = [
+    { ts: recentTs, role: 'assistant', model: 'browser.search', text: 'tool call' },
+    { ts: recentTs, role: 'assistant', model: 'browser.search', text: 'tool call' },
+    { ts: recentTs, role: 'assistant', model: 'custom-llm', text: 'maybe model?' },
+  ];
+
+  const { total, rows, unknownRawModels } = computeModelShare(messages, { now: baseNow, cutoff });
+  assert.equal(total, 0, 'no LLM-like entries should yield zero total');
+  assert.deepEqual(rows, [], 'rows should be empty when no LLMs are detected');
+  assert.ok(
+    unknownRawModels.some((entry) => entry.raw === 'browser.search' && entry.count === 2),
+    'repeated unknown entries increment their counts',
+  );
+  assert.ok(
+    unknownRawModels.some((entry) => entry.raw === 'custom-llm' && entry.count === 1),
+    'distinct unknown strings are preserved in the debug list',
   );
 });
 
