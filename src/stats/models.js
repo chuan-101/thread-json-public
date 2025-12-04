@@ -270,39 +270,63 @@ export function normModelFamily(raw) {
   if (!raw) return null;
   const name = String(raw).toLowerCase().trim();
 
-  // Exclude obvious tools
+  // 排除工具调用
   if (name.startsWith('web.')) return null;
   if (name.startsWith('browser.')) return null;
   if (name.startsWith('python')) return null;
+  if (name.startsWith('computer')) return null;
+  if (name.startsWith('canmore')) return null;
   if (name.includes('tool')) return null;
+  if (name.includes('_do')) return null;
+  if (name.includes('update_')) return null;
+  
+  // 排除明显不是模型的字段
+  if (name === 'all') return null;
+  if (name === 'bio') return null;
+  if (name.length > 50) return null;
+  if (/[_]{2,}/.test(name)) return null;
 
-  // LLM patterns: anything starting with "gpt-" or "o1"/"o3"
+  // GPT 系列：保留完整名称（含 mini/instant/turbo 等后缀）
   if (name.startsWith('gpt-')) {
-    // Take first two segments as family, e.g.
-    // "gpt-5.1-thinking" -> "GPT-5.1"
-    // "gpt-4.1-mini"     -> "GPT-4.1"
-    // "gpt-4o-mini"      -> "GPT-4o"
-    const parts = name.split(/[-:]/); // split on "-" or ":"
+    // 移除日期后缀（如 -2024-08-06）
+    const withoutDate = name.replace(/-\d{4}-\d{2}-\d{2}$/, '');
+    
+    // 提取主要版本号和后缀
+    const parts = withoutDate.split('-');
     if (parts.length >= 2) {
-      const base = parts[1]; // "5.1", "4.1", "4o", "3.5", etc.
-      return `GPT-${base}`;
+      // parts[0] = "gpt"
+      // parts[1] = "4o" / "4" / "5" / "3.5" 等
+      // parts[2+] = "mini" / "instant" / "turbo" / "preview" 等
+      
+      const version = parts[1]; // "4o", "5", "4", "3.5"
+      const suffix = parts.slice(2).join('-'); // "mini", "instant", "turbo-preview" 等
+      
+      if (suffix) {
+        return `GPT-${version}-${suffix}`;
+      }
+      return `GPT-${version}`;
     }
-    // fallback family
     return 'GPT (other)';
   }
 
-  if (name.startsWith('o1')) return 'o1';
-  if (name.startsWith('o3')) return 'o3';
+  // o 系列：保留完整名称（o1/o1-mini/o1-preview/o3/o3-mini/o4 等）
+  if (/^o\d+/.test(name)) {
+    const withoutDate = name.replace(/-\d{4}-\d{2}-\d{2}$/, '');
+    const parts = withoutDate.split('-');
+    
+    if (parts.length === 1) {
+      // "o1", "o3", "o4" 等
+      return parts[0];
+    } else {
+      // "o1-mini", "o1-preview" 等
+      return parts.slice(0, 2).join('-');
+    }
+  }
 
-  // If it looks like an "oX" LLM (e.g. "o4-mini"), we can treat "o4" as family:
-  const match = /^o(\d+)/.exec(name);
-  if (match) return `o${match[1]}`;
+  // 其他 ChatGPT 相关（兜底）
+  if (name.includes('chatgpt')) return 'ChatGPT';
+  if (name.includes('turbo') && !name.startsWith('gpt-')) return 'GPT-3.5-turbo';
+  if (name.includes('davinci')) return 'GPT-3 (davinci)';
 
-  // Everything else: treat as non-LLM (likely tools)
   return null;
-}
-
-function capitalize(input) {
-  if (!input) return input;
-  return input.charAt(0).toUpperCase() + input.slice(1);
 }
