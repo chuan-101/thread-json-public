@@ -30,10 +30,10 @@ export function bumpYearAgg(ts, role, contentLen, imagesInMsg = 0) {
   if (Number.isNaN(date.getTime())) {
     return;
   }
-  const year = date.getFullYear();
-  const monthIndex = date.getMonth();
+  const year = date.getUTCFullYear();
+  const monthIndex = date.getUTCMonth();
   const month = `${monthIndex + 1}`.padStart(2, '0');
-  const day = `${date.getDate()}`.padStart(2, '0');
+  const day = `${date.getUTCDate()}`.padStart(2, '0');
   const dayKey = `${year}-${month}-${day}`;
 
   const entry = ensureYearEntry(year);
