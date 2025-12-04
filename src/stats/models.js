@@ -73,8 +73,8 @@ export function bumpModelBucket(ts, role, modelName, msgLen, tokenCount) {
   bucket.models.set(family, modelEntry);
 }
 
-// options: { window: 'last12months' | 'all', metric: 'msgs' | 'chars' | 'tokens', view: 'family' | 'model' }
-export function getModelShare({ window = 'last12months', metric = 'msgs', view = 'family', now, cutoff } = {}) {
+// options: { window: 'last12months' | 'all' }
+export function getModelShare({ window = 'last12months', now, cutoff } = {}) {
   const timestampNow = Number.isFinite(now) ? now : Date.now();
   const rollingCutoff = cutoff == null ? (window === 'last12months' ? cutoff365Days(timestampNow) : 0) : cutoff;
   const numericCutoff = Number.isFinite(rollingCutoff) ? rollingCutoff : 0;
@@ -83,45 +83,33 @@ export function getModelShare({ window = 'last12months', metric = 'msgs', view =
     seedWindowBuckets(timestampNow, 12);
   }
 
+  const counts = new Map();
   const sortedBuckets = Array.from(MODEL_STATE.values()).sort((a, b) => a.start - b.start);
-  const totalsByModel = new Map();
-  const buckets = [];
-
   sortedBuckets.forEach((bucket) => {
     if (bucket.end < numericCutoff) return;
-
-    const bucketModels = new Map();
-    for (const [model, metrics] of bucket.models.entries()) {
-      const resolved = resolveModelView(model, view);
-      if (!resolved) continue;
-      const { id, label } = resolved;
-      const value = selectMetric(metrics, metric);
-      if (!value) continue;
-      bucketModels.set(id, (bucketModels.get(id) || { model: label, value: 0 }));
-      bucketModels.get(id).value += value;
-      totalsByModel.set(id, (totalsByModel.get(id) || { label, value: 0 }));
-      totalsByModel.get(id).value += value;
+    for (const [family, metrics] of bucket.models.entries()) {
+      const msgs = Number(metrics?.msgs) || 0;
+      if (!msgs) continue;
+      counts.set(family, (counts.get(family) || 0) + msgs);
     }
-
-    const bucketTotal = selectMetric(bucket.totals, metric);
-    buckets.push({
-      key: bucket.key,
-      start: bucket.start,
-      end: bucket.end,
-      total: bucketTotal,
-      models: Array.from(bucketModels.values()).sort((a, b) => b.value - a.value || a.model.localeCompare(b.model)),
-    });
   });
 
-  const total = Array.from(totalsByModel.values()).reduce((sum, { value }) => sum + (Number(value) || 0), 0);
-  const entries = Array.from(totalsByModel.entries())
-    .map(([id, { label, value }]) => ({ id, label, value, pct: total ? value / total : 0 }))
-    .sort((a, b) => {
-      if (b.value !== a.value) return b.value - a.value;
-      return a.label.localeCompare(b.label);
-    });
+  const rows = Array.from(counts.entries())
+    .map(([family, count]) => ({ family, count }))
+    .sort((a, b) => b.count - a.count || a.family.localeCompare(b.family));
 
-  return { total, entries, buckets };
+  const total = rows.reduce((sum, r) => sum + r.count, 0);
+  const divisor = total || 1;
+
+  return {
+    total,
+    rows: rows.map((r) => ({
+      id: r.family,
+      label: r.family,
+      messages: r.count,
+      share: r.count / divisor,
+    })),
+  };
 }
 
 export function computeModelShare(messages, options = {}) {
@@ -133,8 +121,6 @@ export function computeModelShare(messages, options = {}) {
   } else {
     cutoff = windowOpt === 'last12months' ? cutoff365Days(now) : 0;
   }
-  const metric = normalizeMetric(options?.metric);
-  const view = options?.view === 'family' ? 'family' : 'model';
 
   resetModelAgg();
   const filtered = filterMessagesByWindow(messages, cutoff).filter((msg) => msg?.role === 'assistant');
@@ -146,17 +132,13 @@ export function computeModelShare(messages, options = {}) {
     bumpModelBucket(msg?.ts, msg?.role, model, chars, tokens);
   });
 
-  const share = getModelShare({ window: windowOpt, metric, view, now, cutoff });
+  const share = getModelShare({ window: windowOpt, now, cutoff });
+  const buckets = buildBuckets(windowOpt, cutoff);
+
   return {
     total: share.total,
-    entries: share.entries.map((entry) => ({ model: entry.label, value: entry.value, share: entry.pct })),
-    buckets: share.buckets.map((bucket) => ({
-      key: bucket.key,
-      start: bucket.start,
-      end: bucket.end,
-      total: bucket.total,
-      models: bucket.models.map((m) => ({ model: m.model, value: m.value })),
-    })),
+    entries: share.rows.map((entry) => ({ model: entry.label, value: entry.messages, share: entry.share })),
+    buckets,
   };
 }
 
@@ -198,26 +180,26 @@ function seedWindowBuckets(now, months) {
   }
 }
 
-function selectMetric(metrics, metric) {
-  if (!metrics) return 0;
-  if (metric === 'msgs') return Number(metrics.msgs) || 0;
-  if (metric === 'tokens') return Number(metrics.tokens) || 0;
-  return Number(metrics.chars) || 0;
-}
+function buildBuckets(window, cutoff) {
+  const numericCutoff = Number.isFinite(cutoff) ? cutoff : 0;
+  const sortedBuckets = Array.from(MODEL_STATE.values()).sort((a, b) => a.start - b.start);
+  return sortedBuckets
+    .filter((bucket) => (window === 'last12months' ? bucket.end >= numericCutoff : true))
+    .map((bucket) => {
+      const models = Array.from(bucket.models.entries())
+        .map(([family, metrics]) => ({ model: family, value: Number(metrics?.msgs) || 0 }))
+        .filter((m) => m.value > 0)
+        .sort((a, b) => b.value - a.value || a.model.localeCompare(b.model));
 
-function normalizeMetric(metric) {
-  if (metric === 'chars') return 'chars';
-  if (metric === 'tokens') return 'tokens';
-  return 'msgs';
-}
-
-function resolveModelView(model, view) {
-  if (view !== 'family') {
-    return { id: model, label: model };
-  }
-  const id = normModelFamily(model);
-  if (!id) return null;
-  return { id, label: id };
+      const total = Number(bucket.totals?.msgs) || 0;
+      return {
+        key: bucket.key,
+        start: bucket.start,
+        end: bucket.end,
+        total,
+        models,
+      };
+    });
 }
 
 // normalize raw model names to a small set of primary families
