@@ -69,6 +69,39 @@ test('computeModelShare filters to assistant messages within the 12-month window
   assert.ok(bucketWithTotals.models.some((m) => m.model === 'gpt-4o'), 'monthly bucket tracks model totals');
 });
 
+test('computeModelShare ignores models older than 12 months and balances totals', () => {
+  const baseNow = Date.UTC(2024, 11, 15);
+  const cutoff = cutoff365Days(baseNow);
+  const within30Days = baseNow - 30 * DAY_MS;
+  const within200Days = baseNow - 200 * DAY_MS;
+  const olderThanYear = baseNow - 400 * DAY_MS;
+
+  const messages = [
+    { ts: within30Days, role: 'assistant', model: 'gpt-4o', text: 'recent reply' },
+    { ts: within200Days, role: 'assistant', model: 'gpt-4.1', text: 'mid-year answer' },
+    { ts: olderThanYear, role: 'assistant', model: 'gpt-4o', text: 'too old' },
+  ];
+
+  const { total, entries, buckets } = computeModelShare(messages, { now: baseNow, cutoff });
+  assert.equal(total, 2, 'only assistant messages within the last 12 months should count toward totals');
+  const shares = Object.fromEntries(entries.map(({ model, share }) => [model, share]));
+  assert.ok(Math.abs(shares['gpt-4.1'] - 0.5) < 1e-6, 'mid-year model carries half the share');
+  assert.ok(Math.abs(shares['gpt-4o'] - 0.5) < 1e-6, 'recent model carries half the share');
+
+  const bucketTotals = buckets.reduce((sum, bucket) => sum + bucket.total, 0);
+  assert.equal(bucketTotals, total, 'bucket totals should match the overall total within the window');
+
+  const monthKey = `${new Date(within200Days).getUTCFullYear()}-${String(
+    new Date(within200Days).getUTCMonth() + 1,
+  ).padStart(2, '0')}`;
+  const midBucket = buckets.find((bucket) => bucket.key === monthKey);
+  assert.ok(midBucket && midBucket.total > 0, 'mid-year bucket should accumulate model counts');
+  assert.ok(
+    buckets.filter((bucket) => bucket.end < cutoff).every((bucket) => bucket.total === 0),
+    'no bucket before the 12-month cutoff should accumulate totals',
+  );
+});
+
 test('yearly overview aggregates message counts and activity metrics', () => {
   resetYearAgg();
   const jan1 = Date.UTC(2023, 0, 1);
