@@ -1,6 +1,7 @@
 import { tokenize } from './tokenize.js';
 
 const MS_PER_DAY = 24 * 3600 * 1000;
+const MODEL_STATE = new Map();
 
 export function cutoff90Days(now = Date.now()) {
   // Rolling 90-day window (inclusive of the current moment)
@@ -37,103 +38,206 @@ function approximateTokens(text) {
   return tokens.length;
 }
 
-export function computeModelShare(messages, options = {}) {
-  const now = typeof options?.now === 'number' && Number.isFinite(options.now) ? options.now : Date.now();
-  const cutoff =
-    options && typeof options.cutoff === 'number' && Number.isFinite(options.cutoff)
-      ? options.cutoff
-      : cutoff365Days(now);
-  const metric = options?.metric;
-  const filtered = filterMessagesByWindow(messages, cutoff).filter((msg) => msg?.role === 'assistant');
-  if (!filtered.length) {
-    return { total: 0, entries: [], buckets: [] };
-  }
-
-  // Cover the last 18 months to ensure we always have a 12-month window
-  const monthSpan = Number.isFinite(options?.monthSpan) && options.monthSpan > 0 ? options.monthSpan : 18;
-  const buckets = buildMonthlyBuckets(now, monthSpan);
-  const bucketByKey = new Map(buckets.map((bucket) => [bucket.key, bucket]));
-
-  const counts = new Map();
-  filtered.forEach((msg) => {
-    const model = typeof msg?.model === 'string' && msg.model ? msg.model : 'unknown';
-    let value = 0;
-    if (metric === 'chars') {
-      value = (msg?.text || '').length;
-    } else if (metric === 'tokens') {
-      value = approximateTokens(msg?.text || '');
-    } else {
-      value = 1;
-    }
-    if (value > 0) {
-      counts.set(model, (counts.get(model) || 0) + value);
-    }
-
-    const bucketKey = bucketKeyForTs(msg.ts, buckets);
-    if (bucketKey) {
-      const bucket = bucketByKey.get(bucketKey);
-      if (bucket) {
-        bucket.total += value;
-        bucket.models.set(model, (bucket.models.get(model) || 0) + value);
-      }
-    }
-  });
-
-  const total = Array.from(counts.values()).reduce((sum, val) => sum + val, 0);
-  const entries = Array.from(counts.entries())
-    .map(([model, value]) => ({ model, value, share: total ? value / total : 0 }))
-    .sort((a, b) => {
-      if (b.value !== a.value) return b.value - a.value;
-      return a.model.localeCompare(b.model);
-    });
-
-  const serializedBuckets = buckets
-    .filter((bucket) => bucket.end >= cutoff)
-    .map((bucket) => ({
-      key: bucket.key,
-      total: bucket.total,
-      models: Array.from(bucket.models.entries()).map(([model, value]) => ({ model, value })),
-    }));
-
-  return { total, entries, buckets: serializedBuckets };
+export function resetModelAgg() {
+  MODEL_STATE.clear();
 }
 
-function buildMonthlyBuckets(now, monthSpan) {
+// ts: ms epoch, role: "assistant" | "user" | ...
+export function bumpModelBucket(ts, role, modelName, msgLen, tokenCount) {
+  if (role !== 'assistant') return; // model stats only for assistant
+  if (!modelName) return;
+
+  const timestamp = Number(ts);
+  if (!Number.isFinite(timestamp)) return;
+
+  const yearMonth = toYearMonth(timestamp);
+  const bucket = ensureModelBucket(yearMonth, timestamp);
+  const model = String(modelName);
+  const modelEntry = bucket.models.get(model) || { msgs: 0, chars: 0, tokens: 0 };
+
+  modelEntry.msgs += 1;
+  bucket.totals.msgs += 1;
+
+  const chars = Number(msgLen);
+  if (Number.isFinite(chars) && chars > 0) {
+    modelEntry.chars += chars;
+    bucket.totals.chars += chars;
+  }
+
+  const tokens = Number(tokenCount);
+  if (Number.isFinite(tokens) && tokens > 0) {
+    modelEntry.tokens += tokens;
+    bucket.totals.tokens += tokens;
+  }
+
+  bucket.models.set(model, modelEntry);
+}
+
+// options: { window: 'last12months' | 'all', metric: 'msgs' | 'chars' | 'tokens', view: 'family' | 'model' }
+export function getModelShare({ window = 'last12months', metric = 'chars', view = 'family', now, cutoff } = {}) {
+  const timestampNow = Number.isFinite(now) ? now : Date.now();
+  const rollingCutoff = cutoff == null ? (window === 'last12months' ? cutoff365Days(timestampNow) : 0) : cutoff;
+  const numericCutoff = Number.isFinite(rollingCutoff) ? rollingCutoff : 0;
+
+  if (window === 'last12months') {
+    seedWindowBuckets(timestampNow, 12);
+  }
+
+  const sortedBuckets = Array.from(MODEL_STATE.values()).sort((a, b) => a.start - b.start);
+  const totalsByModel = new Map();
   const buckets = [];
+
+  sortedBuckets.forEach((bucket) => {
+    if (bucket.end < numericCutoff) return;
+
+    const bucketModels = new Map();
+    for (const [model, metrics] of bucket.models.entries()) {
+      const { id, label } = resolveModelView(model, view);
+      const value = selectMetric(metrics, metric);
+      if (!value) continue;
+      bucketModels.set(id, (bucketModels.get(id) || { model: label, value: 0 }));
+      bucketModels.get(id).value += value;
+      totalsByModel.set(id, (totalsByModel.get(id) || { label, value: 0 }));
+      totalsByModel.get(id).value += value;
+    }
+
+    const bucketTotal = selectMetric(bucket.totals, metric);
+    buckets.push({
+      key: bucket.key,
+      start: bucket.start,
+      end: bucket.end,
+      total: bucketTotal,
+      models: Array.from(bucketModels.values()).sort((a, b) => b.value - a.value || a.model.localeCompare(b.model)),
+    });
+  });
+
+  const total = Array.from(totalsByModel.values()).reduce((sum, { value }) => sum + (Number(value) || 0), 0);
+  const entries = Array.from(totalsByModel.entries())
+    .map(([id, { label, value }]) => ({ id, label, value, pct: total ? value / total : 0 }))
+    .sort((a, b) => {
+      if (b.value !== a.value) return b.value - a.value;
+      return a.label.localeCompare(b.label);
+    });
+
+  return { total, entries, buckets };
+}
+
+export function computeModelShare(messages, options = {}) {
+  const now = typeof options?.now === 'number' && Number.isFinite(options.now) ? options.now : Date.now();
+  const windowOpt = options?.window === 'all' ? 'all' : 'last12months';
+  let cutoff;
+  if (options && typeof options.cutoff === 'number' && Number.isFinite(options.cutoff)) {
+    cutoff = options.cutoff;
+  } else {
+    cutoff = windowOpt === 'last12months' ? cutoff365Days(now) : 0;
+  }
+  const metric = normalizeMetric(options?.metric);
+  const view = options?.view === 'family' ? 'family' : 'model';
+
+  resetModelAgg();
+  const filtered = filterMessagesByWindow(messages, cutoff).filter((msg) => msg?.role === 'assistant');
+  filtered.forEach((msg) => {
+    const text = typeof msg?.text === 'string' ? msg.text : '';
+    const chars = text.length;
+    const tokens = approximateTokens(text);
+    const model = typeof msg?.model === 'string' && msg.model ? msg.model : 'unknown';
+    bumpModelBucket(msg?.ts, msg?.role, model, chars, tokens);
+  });
+
+  const share = getModelShare({ window: windowOpt, metric, view, now, cutoff });
+  return {
+    total: share.total,
+    entries: share.entries.map((entry) => ({ model: entry.label, value: entry.value, share: entry.pct })),
+    buckets: share.buckets.map((bucket) => ({
+      key: bucket.key,
+      start: bucket.start,
+      end: bucket.end,
+      total: bucket.total,
+      models: bucket.models.map((m) => ({ model: m.model, value: m.value })),
+    })),
+  };
+}
+
+function ensureModelBucket(key, ts) {
+  let bucket = MODEL_STATE.get(key);
+  if (bucket) return bucket;
+
+  const { start, end } = monthBounds(ts);
+  bucket = { key, start, end, totals: { msgs: 0, chars: 0, tokens: 0 }, models: new Map() };
+  MODEL_STATE.set(key, bucket);
+  return bucket;
+}
+
+function monthBounds(ts) {
+  const date = new Date(ts);
+  const startDate = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1, 0, 0, 0, 0);
+  const endDate = Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0, 23, 59, 59, 999);
+  return { start: startDate, end: endDate };
+}
+
+function toYearMonth(ts) {
+  const date = new Date(ts);
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+}
+
+function seedWindowBuckets(now, months) {
   const anchor = new Date(now);
   anchor.setUTCDate(1);
   anchor.setUTCHours(0, 0, 0, 0);
 
-  for (let i = 0; i < monthSpan; i += 1) {
+  for (let i = 0; i < months; i += 1) {
     const d = new Date(anchor);
     d.setUTCMonth(anchor.getUTCMonth() - i, 1);
-    const start = d.getTime();
-    const end = endOfMonth(start);
-    buckets.push({
-      key: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`,
-      start,
-      end,
-      total: 0,
-      models: new Map(),
-    });
+    const ts = d.getTime();
+    const key = toYearMonth(ts);
+    ensureModelBucket(key, ts);
   }
-  // Ensure chronological order from oldest to newest
-  return buckets.reverse();
 }
 
-function endOfMonth(startMs) {
-  const d = new Date(startMs);
-  d.setUTCMonth(d.getUTCMonth() + 1, 0);
-  d.setUTCHours(23, 59, 59, 999);
-  return d.getTime();
+function selectMetric(metrics, metric) {
+  if (!metrics) return 0;
+  if (metric === 'msgs') return Number(metrics.msgs) || 0;
+  if (metric === 'tokens') return Number(metrics.tokens) || 0;
+  return Number(metrics.chars) || 0;
 }
 
-function bucketKeyForTs(ts, buckets) {
-  if (!Number.isFinite(ts)) return null;
-  for (const bucket of buckets) {
-    if (ts >= bucket.start && ts <= bucket.end) {
-      return bucket.key;
+function normalizeMetric(metric) {
+  if (metric === 'msgs') return 'msgs';
+  if (metric === 'tokens') return 'tokens';
+  return 'chars';
+}
+
+function resolveModelView(model, view) {
+  if (view !== 'family') {
+    return { id: model, label: model };
+  }
+  const { id, label } = normModel(model);
+  return { id, label };
+}
+
+function normModel(name) {
+  const raw = typeof name === 'string' ? name.trim() : '';
+  if (!raw) return { id: 'unknown', label: 'unknown' };
+  const cleaned = raw.includes(':') ? raw.split(':').pop() : raw;
+  const noVariant = cleaned.replace(/@(latest|stable)$/i, '');
+  const stripDate = noVariant.replace(/-?20\d{2}-\d{2}-\d{2}.*/i, '');
+
+  const families = [
+    { match: /^gpt-4o-mini/i, id: 'gpt-4o', label: 'gpt-4o' },
+    { match: /^gpt-4o/i, id: 'gpt-4o', label: 'gpt-4o' },
+    { match: /^gpt-4\.1-mini/i, id: 'gpt-4.1', label: 'gpt-4.1' },
+    { match: /^gpt-4\.1/i, id: 'gpt-4.1', label: 'gpt-4.1' },
+    { match: /^gpt-3\.5/i, id: 'gpt-3.5', label: 'gpt-3.5' },
+    { match: /^o3\b/i, id: 'o3', label: 'o3' },
+  ];
+  for (const family of families) {
+    if (family.match.test(stripDate)) {
+      return { id: family.id, label: family.label };
     }
   }
-  return null;
+  const simplified = stripDate.replace(/-\d{4,}$/i, '');
+  const normalized = simplified || stripDate || noVariant || cleaned;
+  return { id: normalized, label: normalized };
 }

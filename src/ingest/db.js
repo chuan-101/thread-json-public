@@ -150,10 +150,11 @@ async function flushBuffer(db, force = false) {
     bufferBytes -= chunkBytes;
     recomputeBufferBounds();
 
-    const storedMessages = chunkEntries.map(({ text, ts, model }) => ({
+    const storedMessages = chunkEntries.map(({ text, ts, model, role }) => ({
       text: typeof text === 'string' ? text : String(text || ''),
       ts: typeof ts === 'number' && Number.isFinite(ts) ? ts : null,
       model: typeof model === 'string' ? model : model == null ? null : String(model),
+      role: typeof role === 'string' ? role : null,
     }));
 
     const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -201,9 +202,10 @@ export async function appendToShard(message) {
       : typeof message.model === 'number'
       ? String(message.model)
       : undefined;
+  const role = typeof message.role === 'string' ? message.role : null;
   const entryBlob = new Blob([text, '\n'], { type: 'text/plain' });
   const entryBytes = entryBlob.size;
-  bufferEntries.push({ text, ts, model: model || null, bytes: entryBytes });
+  bufferEntries.push({ text, ts, model: model || null, role, bytes: entryBytes });
   bufferBytes += entryBytes;
   if (ts != null) {
     bufferMinTs = bufferMinTs == null ? ts : Math.min(bufferMinTs, ts);
@@ -330,6 +332,7 @@ export async function readShardMessages(shardId) {
       text: msg && typeof msg.text === 'string' ? msg.text : '',
       ts: typeof msg?.ts === 'number' && Number.isFinite(msg.ts) ? msg.ts : null,
       model: typeof msg?.model === 'string' ? msg.model : null,
+      role: typeof msg?.role === 'string' ? msg.role : null,
     }));
   }
   const text = await readShardText(shardId);

@@ -56,8 +56,8 @@ test('computeModelShare filters to assistant messages within the 12-month window
     { ts: olderTs, role: 'assistant', model: 'gpt-4o', text: 'old' },
   ];
 
-  const { total, entries, buckets } = computeModelShare(messages, { now: baseNow, cutoff });
-  assert.equal(total, 2, 'only assistant messages in the window should contribute');
+  const { total, entries, buckets } = computeModelShare(messages, { now: baseNow, cutoff, metric: 'msgs' });
+  assert.equal(total, 2, 'only assistant messages in the window should contribute when counting messages');
   assert.deepEqual(
     entries.map((e) => e.model),
     ['gpt-3.5', 'gpt-4o'],
@@ -82,7 +82,7 @@ test('computeModelShare ignores models older than 12 months and balances totals'
     { ts: olderThanYear, role: 'assistant', model: 'gpt-4o', text: 'too old' },
   ];
 
-  const { total, entries, buckets } = computeModelShare(messages, { now: baseNow, cutoff });
+  const { total, entries, buckets } = computeModelShare(messages, { now: baseNow, cutoff, metric: 'msgs' });
   assert.equal(total, 2, 'only assistant messages within the last 12 months should count toward totals');
   const shares = Object.fromEntries(entries.map(({ model, share }) => [model, share]));
   assert.ok(Math.abs(shares['gpt-4.1'] - 0.5) < 1e-6, 'mid-year model carries half the share');
@@ -99,6 +99,35 @@ test('computeModelShare ignores models older than 12 months and balances totals'
   assert.ok(
     buckets.filter((bucket) => bucket.end < cutoff).every((bucket) => bucket.total === 0),
     'no bucket before the 12-month cutoff should accumulate totals',
+  );
+});
+
+test('computeModelShare toggles between last12months and all windows', () => {
+  const baseNow = Date.UTC(2025, 0, 15);
+  const within30Days = baseNow - 30 * DAY_MS;
+  const within180Days = baseNow - 180 * DAY_MS;
+  const eighteenMonthsAgo = baseNow - 550 * DAY_MS;
+
+  const messages = [
+    { ts: within30Days, role: 'assistant', model: 'modelA', text: 'a' },
+    { ts: within180Days, role: 'assistant', model: 'modelB', text: 'b' },
+    { ts: eighteenMonthsAgo, role: 'assistant', model: 'modelC', text: 'c' },
+  ];
+
+  const last12 = computeModelShare(messages, { now: baseNow, window: 'last12months', metric: 'msgs' });
+  assert.equal(last12.total, 2, 'last12months view should omit models older than a year');
+  assert.deepEqual(
+    last12.entries.map((entry) => entry.model),
+    ['modelA', 'modelB'],
+    'only recent models contribute to the rolling window view',
+  );
+
+  const allTime = computeModelShare(messages, { now: baseNow, window: 'all', metric: 'msgs' });
+  assert.equal(allTime.total, 3, 'all-time view should include every assistant message');
+  assert.deepEqual(
+    allTime.entries.map((entry) => entry.model),
+    ['modelA', 'modelB', 'modelC'],
+    'all-time view should surface older models alongside recent ones',
   );
 });
 
