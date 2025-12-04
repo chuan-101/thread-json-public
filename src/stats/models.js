@@ -85,14 +85,16 @@ export function getUnknownRawModels(limit = 10) {
 
 // ts: ms epoch, role: "assistant" | "user" | ...
 export function bumpModelBucket(ts, role, msg) {
-  if (role !== 'assistant') return; // model stats only for assistant
+  if (role !== 'assistant') return;
 
   const raw = extractRawModel(msg);
-  
   const family = normModelFamily(raw);
+  
+  // ← 关键修改：模型未知时归入 "Unknown" 类别，而不是直接 return
+  const modelFamily = family || 'Unknown';
+  
   if (!family) {
-    collectUnknownRawModel(raw); // for debug
-    return; // ignore tools / unknowns
+    collectUnknownRawModel(raw); // 记录未识别的原始值用于调试
   }
 
   const timestamp = Number(ts);
@@ -104,7 +106,7 @@ export function bumpModelBucket(ts, role, msg) {
 
   const yearMonth = toYearMonth(timestamp);
   const bucket = ensureModelBucket(yearMonth, timestamp);
-  const modelEntry = bucket.models.get(family) || { msgs: 0, chars: 0, tokens: 0 };
+  const modelEntry = bucket.models.get(modelFamily) || { msgs: 0, chars: 0, tokens: 0 };
 
   modelEntry.msgs += 1;
   bucket.totals.msgs += 1;
@@ -121,7 +123,7 @@ export function bumpModelBucket(ts, role, msg) {
     bucket.totals.tokens += tokens;
   }
 
-  bucket.models.set(family, modelEntry);
+  bucket.models.set(modelFamily, modelEntry);
 }
 
 // options: { window: 'last12months' | 'all' }
