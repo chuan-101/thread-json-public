@@ -56,17 +56,17 @@ test('computeModelShare filters to assistant messages within the 12-month window
     { ts: olderTs, role: 'assistant', model: 'gpt-4o', text: 'old' },
   ];
 
-  const { total, entries, buckets } = computeModelShare(messages, { now: baseNow, cutoff, metric: 'msgs' });
+  const { total, entries, buckets } = computeModelShare(messages, { now: baseNow, cutoff });
   assert.equal(total, 2, 'only assistant messages in the window should contribute when counting messages');
   assert.deepEqual(
     entries.map((e) => e.model),
-    ['gpt-3.5', 'gpt-4o'],
-    'model entries include assistant-only models ordered deterministically',
+    ['GPT-3.5', 'GPT-4o'],
+    'entries include assistant-only families ordered deterministically',
   );
   assert.ok(Array.isArray(buckets) && buckets.length >= 12, 'buckets cover at least the last year');
   const bucketWithTotals = buckets.find((b) => b.total > 0);
   assert.ok(bucketWithTotals, 'buckets contain at least one month with totals');
-  assert.ok(bucketWithTotals.models.some((m) => m.model === 'gpt-4o'), 'monthly bucket tracks model totals');
+  assert.ok(bucketWithTotals.models.some((m) => m.model === 'GPT-4o'), 'monthly bucket tracks model totals');
 });
 
 test('computeModelShare ignores models older than 12 months and balances totals', () => {
@@ -82,11 +82,11 @@ test('computeModelShare ignores models older than 12 months and balances totals'
     { ts: olderThanYear, role: 'assistant', model: 'gpt-4o', text: 'too old' },
   ];
 
-  const { total, entries, buckets } = computeModelShare(messages, { now: baseNow, cutoff, metric: 'msgs' });
+  const { total, entries, buckets } = computeModelShare(messages, { now: baseNow, cutoff });
   assert.equal(total, 2, 'only assistant messages within the last 12 months should count toward totals');
   const shares = Object.fromEntries(entries.map(({ model, share }) => [model, share]));
-  assert.ok(Math.abs(shares['gpt-4.1'] - 0.5) < 1e-6, 'mid-year model carries half the share');
-  assert.ok(Math.abs(shares['gpt-4o'] - 0.5) < 1e-6, 'recent model carries half the share');
+  assert.ok(Math.abs(shares['GPT-4.1'] - 0.5) < 1e-6, 'mid-year model carries half the share');
+  assert.ok(Math.abs(shares['GPT-4o'] - 0.5) < 1e-6, 'recent model carries half the share');
 
   const bucketTotals = buckets.reduce((sum, bucket) => sum + bucket.total, 0);
   assert.equal(bucketTotals, total, 'bucket totals should match the overall total within the window');
@@ -109,25 +109,25 @@ test('computeModelShare toggles between last12months and all windows', () => {
   const eighteenMonthsAgo = baseNow - 550 * DAY_MS;
 
   const messages = [
-    { ts: within30Days, role: 'assistant', model: 'modelA', text: 'a' },
-    { ts: within180Days, role: 'assistant', model: 'modelB', text: 'b' },
-    { ts: eighteenMonthsAgo, role: 'assistant', model: 'modelC', text: 'c' },
+    { ts: within30Days, role: 'assistant', model: 'gpt-4o-mini', text: 'a' },
+    { ts: within180Days, role: 'assistant', model: 'gpt-3.5-turbo', text: 'b' },
+    { ts: eighteenMonthsAgo, role: 'assistant', model: 'gpt-4.1', text: 'c' },
   ];
 
-  const last12 = computeModelShare(messages, { now: baseNow, window: 'last12months', metric: 'msgs' });
+  const last12 = computeModelShare(messages, { now: baseNow, window: 'last12months' });
   assert.equal(last12.total, 2, 'last12months view should omit models older than a year');
   assert.deepEqual(
     last12.entries.map((entry) => entry.model),
-    ['modelA', 'modelB'],
-    'only recent models contribute to the rolling window view',
+    ['GPT-3.5', 'GPT-4o'],
+    'only recent model families contribute to the rolling window view',
   );
 
-  const allTime = computeModelShare(messages, { now: baseNow, window: 'all', metric: 'msgs' });
+  const allTime = computeModelShare(messages, { now: baseNow, window: 'all' });
   assert.equal(allTime.total, 3, 'all-time view should include every assistant message');
   assert.deepEqual(
     allTime.entries.map((entry) => entry.model),
-    ['modelA', 'modelB', 'modelC'],
-    'all-time view should surface older models alongside recent ones',
+    ['GPT-3.5', 'GPT-4.1', 'GPT-4o'],
+    'all-time view should surface older model families alongside recent ones',
   );
 });
 

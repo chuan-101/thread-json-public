@@ -45,15 +45,15 @@ export function resetModelAgg() {
 // ts: ms epoch, role: "assistant" | "user" | ...
 export function bumpModelBucket(ts, role, modelName, msgLen, tokenCount) {
   if (role !== 'assistant') return; // model stats only for assistant
-  if (!modelName) return;
+  const family = normModelFamily(modelName);
+  if (!family) return; // ignore tools / unknowns
 
   const timestamp = Number(ts);
   if (!Number.isFinite(timestamp)) return;
 
   const yearMonth = toYearMonth(timestamp);
   const bucket = ensureModelBucket(yearMonth, timestamp);
-  const model = String(modelName);
-  const modelEntry = bucket.models.get(model) || { msgs: 0, chars: 0, tokens: 0 };
+  const modelEntry = bucket.models.get(family) || { msgs: 0, chars: 0, tokens: 0 };
 
   modelEntry.msgs += 1;
   bucket.totals.msgs += 1;
@@ -70,11 +70,11 @@ export function bumpModelBucket(ts, role, modelName, msgLen, tokenCount) {
     bucket.totals.tokens += tokens;
   }
 
-  bucket.models.set(model, modelEntry);
+  bucket.models.set(family, modelEntry);
 }
 
-// options: { window: 'last12months' | 'all', metric: 'msgs' | 'chars' | 'tokens', view: 'family' | 'model' }
-export function getModelShare({ window = 'last12months', metric = 'chars', view = 'family', now, cutoff } = {}) {
+// options: { window: 'last12months' | 'all' }
+export function getModelShare({ window = 'last12months', now, cutoff } = {}) {
   const timestampNow = Number.isFinite(now) ? now : Date.now();
   const rollingCutoff = cutoff == null ? (window === 'last12months' ? cutoff365Days(timestampNow) : 0) : cutoff;
   const numericCutoff = Number.isFinite(rollingCutoff) ? rollingCutoff : 0;
@@ -83,43 +83,33 @@ export function getModelShare({ window = 'last12months', metric = 'chars', view 
     seedWindowBuckets(timestampNow, 12);
   }
 
+  const counts = new Map();
   const sortedBuckets = Array.from(MODEL_STATE.values()).sort((a, b) => a.start - b.start);
-  const totalsByModel = new Map();
-  const buckets = [];
-
   sortedBuckets.forEach((bucket) => {
     if (bucket.end < numericCutoff) return;
-
-    const bucketModels = new Map();
-    for (const [model, metrics] of bucket.models.entries()) {
-      const { id, label } = resolveModelView(model, view);
-      const value = selectMetric(metrics, metric);
-      if (!value) continue;
-      bucketModels.set(id, (bucketModels.get(id) || { model: label, value: 0 }));
-      bucketModels.get(id).value += value;
-      totalsByModel.set(id, (totalsByModel.get(id) || { label, value: 0 }));
-      totalsByModel.get(id).value += value;
+    for (const [family, metrics] of bucket.models.entries()) {
+      const msgs = Number(metrics?.msgs) || 0;
+      if (!msgs) continue;
+      counts.set(family, (counts.get(family) || 0) + msgs);
     }
-
-    const bucketTotal = selectMetric(bucket.totals, metric);
-    buckets.push({
-      key: bucket.key,
-      start: bucket.start,
-      end: bucket.end,
-      total: bucketTotal,
-      models: Array.from(bucketModels.values()).sort((a, b) => b.value - a.value || a.model.localeCompare(b.model)),
-    });
   });
 
-  const total = Array.from(totalsByModel.values()).reduce((sum, { value }) => sum + (Number(value) || 0), 0);
-  const entries = Array.from(totalsByModel.entries())
-    .map(([id, { label, value }]) => ({ id, label, value, pct: total ? value / total : 0 }))
-    .sort((a, b) => {
-      if (b.value !== a.value) return b.value - a.value;
-      return a.label.localeCompare(b.label);
-    });
+  const rows = Array.from(counts.entries())
+    .map(([family, count]) => ({ family, count }))
+    .sort((a, b) => b.count - a.count || a.family.localeCompare(b.family));
 
-  return { total, entries, buckets };
+  const total = rows.reduce((sum, r) => sum + r.count, 0);
+  const divisor = total || 1;
+
+  return {
+    total,
+    rows: rows.map((r) => ({
+      id: r.family,
+      label: r.family,
+      messages: r.count,
+      share: r.count / divisor,
+    })),
+  };
 }
 
 export function computeModelShare(messages, options = {}) {
@@ -131,8 +121,6 @@ export function computeModelShare(messages, options = {}) {
   } else {
     cutoff = windowOpt === 'last12months' ? cutoff365Days(now) : 0;
   }
-  const metric = normalizeMetric(options?.metric);
-  const view = options?.view === 'family' ? 'family' : 'model';
 
   resetModelAgg();
   const filtered = filterMessagesByWindow(messages, cutoff).filter((msg) => msg?.role === 'assistant');
@@ -144,17 +132,13 @@ export function computeModelShare(messages, options = {}) {
     bumpModelBucket(msg?.ts, msg?.role, model, chars, tokens);
   });
 
-  const share = getModelShare({ window: windowOpt, metric, view, now, cutoff });
+  const share = getModelShare({ window: windowOpt, now, cutoff });
+  const buckets = buildBuckets(windowOpt, cutoff);
+
   return {
     total: share.total,
-    entries: share.entries.map((entry) => ({ model: entry.label, value: entry.value, share: entry.pct })),
-    buckets: share.buckets.map((bucket) => ({
-      key: bucket.key,
-      start: bucket.start,
-      end: bucket.end,
-      total: bucket.total,
-      models: bucket.models.map((m) => ({ model: m.model, value: m.value })),
-    })),
+    entries: share.rows.map((entry) => ({ model: entry.label, value: entry.messages, share: entry.share })),
+    buckets,
   };
 }
 
@@ -196,48 +180,50 @@ function seedWindowBuckets(now, months) {
   }
 }
 
-function selectMetric(metrics, metric) {
-  if (!metrics) return 0;
-  if (metric === 'msgs') return Number(metrics.msgs) || 0;
-  if (metric === 'tokens') return Number(metrics.tokens) || 0;
-  return Number(metrics.chars) || 0;
+function buildBuckets(window, cutoff) {
+  const numericCutoff = Number.isFinite(cutoff) ? cutoff : 0;
+  const sortedBuckets = Array.from(MODEL_STATE.values()).sort((a, b) => a.start - b.start);
+  return sortedBuckets
+    .filter((bucket) => (window === 'last12months' ? bucket.end >= numericCutoff : true))
+    .map((bucket) => {
+      const models = Array.from(bucket.models.entries())
+        .map(([family, metrics]) => ({ model: family, value: Number(metrics?.msgs) || 0 }))
+        .filter((m) => m.value > 0)
+        .sort((a, b) => b.value - a.value || a.model.localeCompare(b.model));
+
+      const total = Number(bucket.totals?.msgs) || 0;
+      return {
+        key: bucket.key,
+        start: bucket.start,
+        end: bucket.end,
+        total,
+        models,
+      };
+    });
 }
 
-function normalizeMetric(metric) {
-  if (metric === 'msgs') return 'msgs';
-  if (metric === 'tokens') return 'tokens';
-  return 'chars';
-}
+// normalize raw model names to a small set of primary families
+export function normModelFamily(raw) {
+  if (!raw) return null;
+  const name = String(raw).toLowerCase();
 
-function resolveModelView(model, view) {
-  if (view !== 'family') {
-    return { id: model, label: model };
-  }
-  const { id, label } = normModel(model);
-  return { id, label };
-}
+  // GPT-4o family
+  if (name.startsWith('gpt-4o')) return 'GPT-4o';
 
-function normModel(name) {
-  const raw = typeof name === 'string' ? name.trim() : '';
-  if (!raw) return { id: 'unknown', label: 'unknown' };
-  const cleaned = raw.includes(':') ? raw.split(':').pop() : raw;
-  const noVariant = cleaned.replace(/@(latest|stable)$/i, '');
-  const stripDate = noVariant.replace(/-?20\d{2}-\d{2}-\d{2}.*/i, '');
+  // GPT-4.1 family
+  if (name.startsWith('gpt-4.1')) return 'GPT-4.1';
 
-  const families = [
-    { match: /^gpt-4o-mini/i, id: 'gpt-4o', label: 'gpt-4o' },
-    { match: /^gpt-4o/i, id: 'gpt-4o', label: 'gpt-4o' },
-    { match: /^gpt-4\.1-mini/i, id: 'gpt-4.1', label: 'gpt-4.1' },
-    { match: /^gpt-4\.1/i, id: 'gpt-4.1', label: 'gpt-4.1' },
-    { match: /^gpt-3\.5/i, id: 'gpt-3.5', label: 'gpt-3.5' },
-    { match: /^o3\b/i, id: 'o3', label: 'o3' },
-  ];
-  for (const family of families) {
-    if (family.match.test(stripDate)) {
-      return { id: family.id, label: family.label };
-    }
-  }
-  const simplified = stripDate.replace(/-\d{4,}$/i, '');
-  const normalized = simplified || stripDate || noVariant || cleaned;
-  return { id: normalized, label: normalized };
+  // GPT-4.5 / 4.x variants (optional)
+  if (name.startsWith('gpt-4.5')) return 'GPT-4.5';
+  if (name.startsWith('gpt-4')) return 'GPT-4 (other)';
+
+  // GPT-3.5 family
+  if (name.startsWith('gpt-3.5')) return 'GPT-3.5';
+
+  // o3 / o1 families (if present)
+  if (name.startsWith('o3')) return 'o3';
+  if (name.startsWith('o1')) return 'o1';
+
+  // tools and unknown: treat as non-LLM
+  return null;
 }
