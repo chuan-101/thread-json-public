@@ -267,7 +267,7 @@
     import { clearAll, listShards, readShardMessages } from './src/ingest/db.js';
     import { WorkerPool } from './src/workers/pool.js';
     import { mergePartials, exactRecount, scoreCandidates, buildTopViews, reconcileTopViews } from './src/stats/merge.js';
-    import { cutoff90Days, cutoff365Days, filterMessagesByWindow, computeModelShare } from './src/stats/models.js';
+    import { cutoff90Days, cutoff365Days, filterMessagesByWindow, computeModelShare, resetModelAgg, getModelShare, bumpModelBucket } from './src/stats/models.js';
     import { finalizeYearAgg, computeYearlyMetrics } from './src/stats/timeline.js';
     // —— 主题下拉 —— //
     const themeSel = document.getElementById('theme');
