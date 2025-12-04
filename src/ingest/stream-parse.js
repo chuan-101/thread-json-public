@@ -344,7 +344,7 @@ const pickModel = (msg) => {
 
   const shouldEmit = (msg) => {
     if (!msg || typeof msg !== 'object') return false;
-    const role = msg.role || msg.author?.role;
+    const role = normalizeRole(msg);
     if (role !== 'assistant') return false;
     if (assistName && (msg.name || msg.author?.name || '') !== assistName) {
       return false;
