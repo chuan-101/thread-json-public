@@ -239,16 +239,14 @@
 
       <!-- 模型占比 -->
       <section class="card stack" id="card-models">
-        <div class="section-title">Model usage share (assistant only)</div>
+        <div class="section-title">Model usage share (assistant, last 12 months)</div>
+        <p class="small muted">Share is based on assistant message count. Tools (web.run, python, browser.open, etc.) are excluded.</p>
         <div class="row small" style="align-items:center; gap:8px;">
           <label class="muted" for="window">窗口：</label>
           <select id="window"><option value="last12months">滚动12个月</option><option value="all">全部时间</option></select>
-          <span class="muted">仅助手消息</span>
-          <select id="metric"><option value="chars">字符占比</option><option value="msgs">消息数占比</option><option value="tokens">近似token占比</option></select>
-          <select id="view"><option value="family">家族视图</option><option value="model">具体型号</option></select>
         </div>
-        <div id="models-chart" style="height:220px;display:flex;align-items:center;justify-content:center;">
-          <span class="muted">圆环图占位（后续接入渲染）</span>
+        <div id="models-chart" class="table-scroll">
+          <span class="muted">暂无模型统计</span>
         </div>
       </section>
     </main>
@@ -509,10 +507,8 @@
     const modelsState = {
       messages: [],
       window: 'last12months',
-      metric: 'chars',
-      view: 'family',
       now: Date.now(),
-      share: { total: 0, entries: [], buckets: [] },
+      share: { total: 0, rows: [], buckets: [] },
       loading: false,
       error: null,
     };
@@ -531,8 +527,6 @@
     const parseBtnLabel = parseBtn.textContent;
     const cloudToggle = document.getElementById('cloud-toggle');
     const modelWindowSelect = document.getElementById('window');
-    const modelMetricSelect = document.getElementById('metric');
-    const modelViewSelect = document.getElementById('view');
     const modelsChartHost = document.getElementById('models-chart');
 
     let currentRunPromise = null;
@@ -594,26 +588,6 @@
         } else {
           renderModelShare();
         }
-      });
-    }
-
-    if (modelMetricSelect) {
-      modelsState.metric = normalizeMetric(modelMetricSelect.value);
-      modelMetricSelect.addEventListener('change', () => {
-        modelsState.metric = normalizeMetric(modelMetricSelect.value);
-        if (modelsState.messages.length && !modelsState.loading) {
-          recomputeModelShareView();
-        } else {
-          renderModelShare();
-        }
-      });
-    }
-
-    if (modelViewSelect) {
-      modelsState.view = modelViewSelect.value === 'model' ? 'model' : 'family';
-      modelViewSelect.addEventListener('change', () => {
-        modelsState.view = modelViewSelect.value === 'model' ? 'model' : 'family';
-        renderModelShare();
       });
     }
 
@@ -1004,15 +978,9 @@
     updateYearlyTableResponsive();
 
     // —— 模型占比（近12个月） —— //
-    function normalizeMetric(raw) {
-      if (raw === 'tokens') return 'tokens';
-      if (raw === 'msgs') return 'msgs';
-      return 'chars';
-    }
-
     function resetModelShareState() {
       modelsState.messages = [];
-      modelsState.share = { total: 0, entries: [], buckets: [] };
+      modelsState.share = { total: 0, rows: [], buckets: [] };
       modelsState.loading = false;
       modelsState.error = null;
       modelsState.now = Date.now();
@@ -1028,73 +996,10 @@
       return modelNumberFormatter ? modelNumberFormatter.format(rounded) : String(rounded);
     }
 
-    function resolveMetricLabel(metric) {
-      if (metric === 'tokens') return '近似 Token';
-      if (metric === 'msgs') return '消息数';
-      return '字符数';
-    }
-
     function resolveWindowLabel(windowOpt) {
       return windowOpt === 'all' ? '全部时间' : '滚动12个月';
     }
-
-    function deriveModelFamily(model) {
-      const raw = typeof model === 'string' ? model.trim() : '';
-      if (!raw) return 'unknown';
-      const stripped = raw.includes(':') ? raw.split(':').pop() : raw;
-      const cleaned = stripped.replace(/@(latest|stable)$/i, '');
-      const withoutDate = cleaned.replace(/-?20\d{2}-\d{2}-\d{2}.*/i, '');
-      const withoutLongVersion = withoutDate.replace(/-\d{4,}$/i, '');
-      return withoutLongVersion || cleaned || 'unknown';
-    }
-
-    function buildModelViewEntries(entries, view) {
-      if (view !== 'family') {
-        return entries;
-      }
-      const groups = new Map();
-      entries.forEach(({ model, value }) => {
-        const family = deriveModelFamily(model);
-        const key = family.toLowerCase();
-        const existing = groups.get(key) || { model: family, value: 0 };
-        existing.value += Number.isFinite(value) ? value : 0;
-        groups.set(key, existing);
-      });
-      const aggregated = Array.from(groups.values());
-      const total = aggregated.reduce((sum, entry) => sum + (Number(entry.value) || 0), 0) || 0;
-      return aggregated
-        .map((entry) => ({ ...entry, share: total ? entry.value / total : 0 }))
-        .sort((a, b) => {
-          if (b.value !== a.value) return b.value - a.value;
-          return a.model.localeCompare(b.model);
-        });
-    }
-
-    function renderModelTrend(buckets) {
-      const source = Array.isArray(buckets) ? buckets.slice(-12) : [];
-      if (!source.length) return null;
-      const max = source.reduce((acc, bucket) => Math.max(acc, Number(bucket?.total) || 0), 0);
-      if (max <= 0) return null;
-      const container = document.createElement('div');
-      container.className = 'model-trend';
-      source.forEach((bucket) => {
-        const total = Number(bucket?.total) || 0;
-        const height = Math.max(6, Math.round((total / max) * 60));
-        const month = typeof bucket?.key === 'string' && bucket.key.includes('-') ? bucket.key.split('-')[1] : '';
-        const column = document.createElement('div');
-        column.className = 'month';
-        const bar = document.createElement('div');
-        bar.className = 'bar';
-        bar.style.height = `${height}px`;
-        bar.title = `${bucket.key}: ${formatModelNumber(total)}`;
-        const label = document.createElement('span');
-        label.textContent = month || bucket.key || '';
-        column.appendChild(bar);
-        column.appendChild(label);
-        container.appendChild(column);
-      });
-      return container;
-    }
+    
 
     function renderModelShare() {
       if (!modelsChartHost) return;
@@ -1116,11 +1021,10 @@
         return;
       }
 
-      const rawEntries = Array.isArray(modelsState?.share?.entries) ? modelsState.share.entries : [];
+      const rows = Array.isArray(modelsState?.share?.rows) ? modelsState.share.rows : [];
       const total = Number(modelsState?.share?.total) || 0;
-      const viewEntries = buildModelViewEntries(rawEntries, modelsState.view);
 
-      if (!viewEntries.length || total <= 0) {
+      if (!rows.length || total <= 0) {
         const placeholder = document.createElement('span');
         placeholder.className = 'muted';
         placeholder.textContent = '暂无模型统计';
@@ -1128,50 +1032,49 @@
         return;
       }
 
-      const list = document.createElement('div');
-      list.className = 'model-rows';
-      const topEntries = viewEntries.slice(0, 8);
-      topEntries.forEach((entry) => {
-        const row = document.createElement('div');
-        row.className = 'model-row';
-        const label = document.createElement('div');
-        label.className = 'label';
-        label.textContent = entry.model || '未知模型';
+      const table = document.createElement('table');
+      table.className = 'data-table';
 
-        const barWrap = document.createElement('div');
-        barWrap.className = 'progress';
-        const bar = document.createElement('div');
-        bar.className = 'bar';
-        const pct = Math.max(0, Math.min(100, (Number(entry.share) || 0) * 100));
-        bar.style.width = `${pct}%`;
-        barWrap.appendChild(bar);
-
-        const share = document.createElement('div');
-        share.className = 'share';
-        const pctLabel = Math.round((Number(entry.share) || 0) * 1000) / 10;
-        share.textContent = `${pctLabel.toFixed(1)}%`;
-
-        const value = document.createElement('div');
-        value.className = 'value';
-        value.textContent = formatModelNumber(entry.value);
-
-        row.appendChild(label);
-        row.appendChild(barWrap);
-        row.appendChild(share);
-        row.appendChild(value);
-        list.appendChild(row);
+      const thead = document.createElement('thead');
+      const headRow = document.createElement('tr');
+      ['Model', 'Messages', 'Share'].forEach((label, idx) => {
+        const th = document.createElement('th');
+        th.textContent = label;
+        if (idx > 0) th.className = 'num';
+        headRow.appendChild(th);
       });
-      modelsChartHost.appendChild(list);
+      thead.appendChild(headRow);
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+      rows.forEach((entry) => {
+        const tr = document.createElement('tr');
+
+        const modelCell = document.createElement('td');
+        modelCell.textContent = entry.label || entry.id || '未知模型';
+        tr.appendChild(modelCell);
+
+        const msgCell = document.createElement('td');
+        msgCell.className = 'num';
+        msgCell.textContent = formatModelNumber(entry.messages);
+        tr.appendChild(msgCell);
+
+        const shareCell = document.createElement('td');
+        shareCell.className = 'num';
+        const pctLabel = Math.round((Number(entry.share) || 0) * 1000) / 10;
+        shareCell.textContent = `${pctLabel.toFixed(1)}%`;
+        tr.appendChild(shareCell);
+
+        tbody.appendChild(tr);
+      });
+
+      table.appendChild(tbody);
+      modelsChartHost.appendChild(table);
 
       const meta = document.createElement('div');
       meta.className = 'models-meta';
-      meta.textContent = `窗口：${resolveWindowLabel(modelsState.window)}（仅助手） · ${resolveMetricLabel(modelsState.metric)}总计 ${formatModelNumber(total)}`;
+      meta.textContent = `窗口：${resolveWindowLabel(modelsState.window)}（仅助手） · 总计 ${formatModelNumber(total)} 条消息`;
       modelsChartHost.appendChild(meta);
-
-      const trend = renderModelTrend(modelsState.share?.buckets || []);
-      if (trend) {
-        modelsChartHost.appendChild(trend);
-      }
     }
 
     function recomputeModelShareView() {
@@ -1179,7 +1082,7 @@
       const now = modelsState.now || Date.now();
       const windowOpt = modelsState.window === 'all' ? 'all' : 'last12months';
       const cutoff = windowOpt === 'last12months' ? cutoff365Days(now) : 0;
-      modelsState.share = computeModelShare(messages, { now, cutoff, metric: modelsState.metric, window: windowOpt });
+      modelsState.share = computeModelShare(messages, { now, cutoff, window: windowOpt });
       renderModelShare();
     }
 
@@ -1230,7 +1133,6 @@
       modelsState.share = computeModelShare(collected, {
         now,
         cutoff: windowCutoff,
-        metric: modelsState.metric,
         window: windowOpt,
       });
       modelsState.loading = false;
