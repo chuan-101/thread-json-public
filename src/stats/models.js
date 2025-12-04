@@ -137,6 +137,7 @@ export function computeModelShare(messages, options = {}) {
 
   return {
     total: share.total,
+    rows: share.rows,
     entries: share.rows.map((entry) => ({ model: entry.label, value: entry.messages, share: entry.share })),
     buckets,
   };
