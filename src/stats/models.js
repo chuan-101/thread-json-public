@@ -90,11 +90,24 @@ export function bumpModelBucket(ts, role, msg) {
   const raw = extractRawModel(msg);
   const family = normModelFamily(raw);
   
-  // ← 关键修改：模型未知时归入 "Unknown" 类别，而不是直接 return
-  const modelFamily = family || 'Unknown';
-  
-  if (!family) {
-    collectUnknownRawModel(raw); // 记录未识别的原始值用于调试
+  // ← 关键修改：区分 Unknown 和 Tools
+  let modelFamily;
+  if (family) {
+    modelFamily = family;
+  } else {
+    // 判断是否是工具调用
+    const rawLower = raw ? String(raw).toLowerCase() : '';
+    const isToolCall = 
+      rawLower.startsWith('web.') ||
+      rawLower.startsWith('browser.') ||
+      rawLower.startsWith('computer') ||
+      rawLower.startsWith('python') ||
+      rawLower.startsWith('container') ||
+      rawLower.startsWith('canmore') ||
+      rawLower === 'all';
+    
+    modelFamily = isToolCall ? 'Tools' : 'Unknown';
+    collectUnknownRawModel(raw);
   }
 
   const timestamp = Number(ts);
