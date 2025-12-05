@@ -238,10 +238,36 @@
       padding: 20px;
     }
     .cloud span {
+      /* 1. 基础布局：让它像个小砖块 */
+      display: inline-block; 
+      line-height: 1;
+      
+      /* 2. 标签外观：背景、边框、圆角 */
+      background-color: rgba(255, 255, 255, 0.5); /* 半透明白色底，适应所有主题 */
+      border: 1px solid var(--border);            /* 加上细边框 */
+      border-radius: 4px;                         /* 微微的圆角 */
+      
+      /* 3. 呼吸感：用 em 单位，让内边距随字号自动变大变小 */
+      padding: 0.4em 0.8em; 
+      
+      /* 4. 细节微调 */
       color: var(--text);
-      opacity: 0.8;
-      /* 字体大小由JS控制，但这里给个过渡 */
-      transition: all 0.3s;
+      cursor: default;     /* 鼠标放上去是箭头，不是光标 */
+      transition: all 0.2s ease; /* 让变化丝滑一点 */
+      
+      /* 5. 阴影：增加一点点立体感，像贴纸 */
+      box-shadow: 1px 1px 2px rgba(0,0,0,0.03);
+    }
+
+    /* ---- 交互：鼠标滑过时 ---- */
+    /* 当你碰到它，它会变亮、变实，像被唤醒一样 */
+    .cloud span:hover {
+      background-color: var(--primary); /* 变成主题色 */
+      color: #fff;                      /* 文字变白 */
+      border-color: var(--primary);     
+      opacity: 1 !important;            /* 强制不透明，看得更清 */
+      transform: translateY(-2px);      /* 微微上浮 */
+      box-shadow: 2px 4px 8px rgba(0,0,0,0.1);
     }
 
     /* 底部 */
