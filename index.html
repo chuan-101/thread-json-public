@@ -144,7 +144,7 @@
     <section class="card stack" id="top">
       <header>
         <h1 class="h1">Echo：<span id="title-name">My GPT</span></h1>
-        <p class="muted">Analyze assistant messages (word cloud: last 90 days; model share: last 12 months, assistant only). Yearly overview aggregates both assistant and user.</p>
+        <p class="muted">A Year by the Numbers</p>
       </header>
 
       <div class="stack">
@@ -229,18 +229,14 @@
           <button type="button" data-mode="words" aria-pressed="false">Words only (debug)</button>
         </div>
         <div class="cloud" id="cloud">
-          <!-- 占位渲染 -->
-          <span style="font-size:36px;" data-w="1"  style="--w:1">Syzygy</span>
-          <span style="font-size:26px;" data-w=".8" style="--w:.8">听话</span>
-          <span style="font-size:22px;" data-w=".7" style="--w:.7">现在</span>
-          <span style="font-size:20px;" data-w=".6" style="--w:.6">抱紧</span>
+          <span class="muted">暂无统计</span>
         </div>
       </section>
 
       <!-- 模型占比 -->
       <section class="card stack" id="card-models">
-        <div class="section-title">Model usage share (assistant, last 12 months)</div>
-        <p class="small muted">Share is based on assistant message count. Tools (web.run, python, browser.open, etc.) are excluded.</p>
+        <div class="section-title">使用模型占比</div>
+        <p class="small muted">统计助手消息占比。工具调用（web、python、browser等）单独归类为Tools。</p>
         <div class="row small" style="align-items:center; gap:8px;">
           <label class="muted" for="window">统计年份：</label>
           <select id="window">
