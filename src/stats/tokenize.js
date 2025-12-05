@@ -54,16 +54,37 @@ const LATIN_REGEX = /^[a-z0-9_]+$/;
 const DIGIT_REGEX = /^\d+$/;
 const SINGLE_LATIN_REGEX = /^[a-z_]$/;
 
+let cjkStopwordRegex = null;
+
 function resolveStopwords() {
   return FIXED_STOPWORDS;
+}
+
+function resolveCjkStopwordRegex() {
+  if (cjkStopwordRegex !== null) return cjkStopwordRegex;
+
+  const cjkStopwords = Array.from(FIXED_STOPWORDS).filter((token) => CJK_TOKEN_REGEX.test(token));
+  if (!cjkStopwords.length) {
+    cjkStopwordRegex = null;
+    return cjkStopwordRegex;
+  }
+
+  const escaped = cjkStopwords.map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  cjkStopwordRegex = new RegExp(escaped.join('|'), 'gu');
+  return cjkStopwordRegex;
 }
 
 export function* tokenizeIter(text) {
   if (!text) return;
   const stopwords = resolveStopwords();
   const lower = String(text).toLowerCase();
+  const cjkRegex = resolveCjkStopwordRegex();
+  if (cjkRegex) {
+    cjkRegex.lastIndex = 0;
+  }
+  const sanitized = cjkRegex ? lower.replace(cjkRegex, ' ') : lower;
 
-  for (const match of lower.matchAll(TOKEN_REGEX)) {
+  for (const match of sanitized.matchAll(TOKEN_REGEX)) {
     let token = match[0];
     if (!token) continue;
 
