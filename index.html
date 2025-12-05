@@ -7,400 +7,380 @@
   <meta name="color-scheme" content="light"/>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
   <style>
-    /* ---- Syzygy's Retro Overhaul ---- */
+    /* ---- Syzygy's Warm Analog Retro Style ---- */
     :root {
-      --gap: 16px;
-      /* 90s Bevel System */
-      --bevel-light: #ffffff;
-      --bevel-dark: #000000;
-      --bevel-gray: #808080;
-      --bevel-face: #c0c0c0;
+      --radius: 4px; /* 微圆角，复古但不尖锐 */
+      --gap: 20px;
       
-      /* Default Theme (Win95 Style) - Maps to "Fable" */
-      --bg: #008080;           /* Desktop Teal */
-      --text: #000000;
-      --card-bg: #c0c0c0;
-      --primary: #000080;      /* Active Title Bar Blue */
-      --accent: #ffff00;       /* Highlight */
-      --font-main: "MS Sans Serif", "Segoe UI", sans-serif;
-      --font-mono: "Courier New", monospace;
+      /* 基础字体设置 - 追求屏幕阅读感 */
+      --font-ui: "Menlo", "Consolas", "Monaco", "Courier New", monospace; /* 等宽字体带来数据感 */
+      --font-body: system-ui, -apple-system, sans-serif;
+      
+      /* 纹理透明度 */
+      --noise-opacity: 0.03;
+      --scanline-opacity: 0.02;
+
+      /* ---- Fable (默认：参考你的图片 - 暖米色/深炭灰/柔红) ---- */
+      --bg: #f2f0e6;            /* 暖米色纸张感背景 */
+      --text: #2c2c2c;          /* 深炭灰文本 */
+      --card-bg: #e6e4dc;       /* 比背景稍深的卡片底色 */
+      --card-highlight: #2c2c2c;/* 反色卡片（深色块） */
+      --text-highlight: #f2f0e6;/* 反色卡片上的文字 */
+      --primary: #c97c7c;       /* 莫兰迪红 */
+      --accent: #8FA3A3;        /* 灰调青 */
+      --border: rgba(44, 44, 44, 0.1);
     }
 
-    /* Theme Overrides - Keeping ID mapping compatible with JS */
-    html[data-theme="Galaxy"] { /* Vaporwave / Macintosh */
-      --bg: #ff7eb6;
-      --card-bg: #e6e6fa;
-      --text: #2a2a2a;
-      --primary: #8a2be2;
-      --accent: #00ffff;
+    /* ---- Theme: Galaxy (柔和紫灰 - 梦境感) ---- */
+    html[data-theme="Galaxy"] {
+      --bg: #e8e6f0;
+      --text: #2a2a35;
+      --card-bg: #dedce8;
+      --card-highlight: #4a4a5e;
+      --text-highlight: #e8e6f0;
+      --primary: #948cb5;
+      --accent: #b5a4c9;
+      --border: rgba(42, 42, 53, 0.1);
     }
-    html[data-theme="Ferry"] { /* Matrix / Terminal */
-      --bg: #000000;
-      --card-bg: #0c0c0c;
-      --text: #00ff00;
-      --primary: #008000;
-      --accent: #003300;
-      --bevel-light: #004400;
-      --bevel-dark: #00ff00;
-      --bevel-face: #001100;
-      --bevel-gray: #003300;
-    }
-    html[data-theme="Ember"] { /* Hotdog Stand / High Contrast */
-      --bg: #ffff00;
-      --card-bg: #ff0000;
-      --text: #ffffff;
-      --primary: #000000;
-      --accent: #ffff00;
-      --bevel-face: #ff0000;
-      --bevel-light: #ffcccc;
-      --bevel-dark: #660000;
+    
+    /* ---- Theme: Ferry (Gameboy - 复古液晶屏) ---- */
+    html[data-theme="Ferry"] {
+      --bg: #8b9bb4;
+      --text: #0f380f;
+      --card-bg: #7f8fa6;
+      --card-highlight: #0f380f;
+      --text-highlight: #9bbc0f;
+      --primary: #306230;
+      --accent: #0f380f;
+      --border: rgba(15, 56, 15, 0.2);
     }
 
-    /* ---- 基础重置与布局 ---- */
+    /* ---- Theme: Ember (暖阳 - 陶土色) ---- */
+    html[data-theme="Ember"] {
+      --bg: #f5e6d3;
+      --text: #5c4033;
+      --card-bg: #ebdcc9;
+      --card-highlight: #8b5a2b;
+      --text-highlight: #f5e6d3;
+      --primary: #cd853f;
+      --accent: #deb887;
+      --border: rgba(92, 64, 51, 0.15);
+    }
+
+    /* ---- 全局重置与纹理 ---- */
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: var(--font-main);
+      font-family: var(--font-ui); /* 全局使用等宽字体增强“数据记录”感 */
       color: var(--text);
-      background: var(--bg);
-      /* Dotted pattern overlay for texture */
-      background-image: radial-gradient(var(--text) 1px, transparent 1px);
-      background-size: 20px 20px;
-      background-opacity: 0.1;
-      padding-bottom: 40px;
+      background-color: var(--bg);
+      line-height: 1.5;
+      padding-bottom: 60px;
+      /* 噪点纹理 */
+      position: relative;
     }
-    .wrap { max-width: 900px; margin: 0 auto; padding: 20px; }
-    .stack { display: flex; flex-direction: column; gap: var(--gap); }
-    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
     
-    /* ---- Retro Component: Card / Window ---- */
+    /* 模拟屏幕纹理 */
+    body::before {
+      content: "";
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.5'/%3E%3C/svg%3E");
+      opacity: var(--noise-opacity);
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    .wrap { max-width: 800px; margin: 0 auto; padding: 40px 20px; }
+    .stack { display: flex; flex-direction: column; gap: var(--gap); }
+    .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    
+    /* ---- 卡片设计 ---- */
     .card {
       background: var(--card-bg);
-      border: 2px solid;
-      border-top-color: var(--bevel-light);
-      border-left-color: var(--bevel-light);
-      border-right-color: var(--bevel-dark);
-      border-bottom-color: var(--bevel-dark);
-      box-shadow: 1px 1px 0 #000;
-      padding: 16px;
-      position: relative;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+      transition: all 0.2s ease;
     }
     
-    /* Fake Title Bar for Sections */
-    .section-title {
-      background: var(--primary);
-      color: #fff;
-      font-family: var(--font-main);
-      font-weight: bold;
-      padding: 4px 8px;
-      margin: -18px -18px 16px -18px; /* Stick to edges */
-      border: 2px solid var(--card-bg);
-      display: block;
-      letter-spacing: 1px;
+    /* 这种深色块卡片模仿了你图片里的深色区域 */
+    .card.dark-mode {
+      background: var(--card-highlight);
+      color: var(--text-highlight);
+      border: none;
     }
-    
-    /* Typography */
+    .card.dark-mode .muted { color: rgba(255,255,255,0.6); }
+    .card.dark-mode input, .card.dark-mode select {
+      background: rgba(255,255,255,0.1);
+      color: var(--text-highlight);
+      border-color: rgba(255,255,255,0.2);
+    }
+
+    /* ---- 排版 ---- */
     .h1 {
-      font-family: var(--font-mono);
-      font-size: 24px;
+      font-size: 20px;
       font-weight: 700;
-      margin: 0 0 8px;
+      letter-spacing: -0.5px;
+      margin: 0 0 4px;
       text-transform: uppercase;
-      text-shadow: 1px 1px 0 var(--bevel-light);
     }
-    .muted { opacity: 0.7; }
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      opacity: 0.6;
+      margin-bottom: 16px;
+      border-bottom: 1px dashed var(--border);
+      padding-bottom: 8px;
+    }
+    .muted { opacity: 0.6; font-size: 13px; }
     .small { font-size: 12px; }
 
-    /* ---- Retro Inputs ---- */
+    /* ---- 控件 ---- */
     input[type="text"], textarea, select {
       width: 100%;
-      padding: 6px;
-      border: 2px solid;
-      border-top-color: var(--bevel-dark);
-      border-left-color: var(--bevel-dark);
-      border-right-color: var(--bevel-light);
-      border-bottom-color: var(--bevel-light);
-      background: #fff;
-      color: #000;
-      font-family: var(--font-mono);
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.5);
+      color: var(--text);
+      font-family: var(--font-ui);
       font-size: 13px;
-      border-radius: 0;
+      border-radius: var(--radius);
       outline: none;
+      transition: border-color 0.2s;
     }
-    input:focus { background: #ffffe0; }
+    input:focus, select:focus { border-color: var(--primary); background: #fff; }
 
-    /* ---- Retro Buttons ---- */
     .btn {
       appearance: none;
-      border: 2px solid;
-      border-top-color: var(--bevel-light);
-      border-left-color: var(--bevel-light);
-      border-right-color: var(--bevel-dark);
-      border-bottom-color: var(--bevel-dark);
-      background: var(--card-bg);
-      color: var(--text);
-      padding: 4px 12px;
-      font-family: var(--font-main);
-      font-weight: bold;
-      cursor: pointer;
-      text-transform: uppercase;
+      border: 1px solid transparent;
+      border-radius: var(--radius);
+      padding: 8px 16px;
+      background: var(--primary);
+      color: #fff;
+      font-family: var(--font-ui);
       font-size: 12px;
-      box-shadow: 1px 1px 0 #000;
+      font-weight: 600;
+      cursor: pointer;
+      letter-spacing: 0.5px;
     }
-    .btn:active {
-      border-top-color: var(--bevel-dark);
-      border-left-color: var(--bevel-dark);
-      border-right-color: var(--bevel-light);
-      border-bottom-color: var(--bevel-light);
-      transform: translate(1px, 1px);
-      box-shadow: none;
+    .btn:hover { opacity: 0.9; }
+    .btn.secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
     }
-    .btn.secondary { opacity: 0.9; }
+    .btn.secondary:hover { border-color: var(--text); }
 
-    /* ---- Functional Elements ---- */
-    .pill { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
-    /* Checkbox hack to look retro */
+    /* 开关 */
+    .pill { display: inline-flex; gap: 8px; align-items: center; cursor: pointer; font-size: 13px; user-select: none;}
     input[type="checkbox"] {
       appearance: none;
-      width: 16px; height: 16px;
-      border: 2px solid;
-      border-top-color: var(--bevel-dark);
-      border-left-color: var(--bevel-dark);
-      border-right-color: var(--bevel-light);
-      border-bottom-color: var(--bevel-light);
-      background: #fff;
+      width: 14px; height: 14px;
+      border: 1px solid var(--text);
+      border-radius: 2px;
       position: relative;
-      vertical-align: middle;
       cursor: pointer;
     }
+    input[type="checkbox"]:checked { background: var(--text); }
     input[type="checkbox"]:checked::after {
-      content: '✓';
-      position: absolute;
-      color: #000;
-      font-weight: bold;
-      font-size: 14px;
-      top: -4px; left: 1px;
+      content: '';
+      position: absolute; top: 2px; left: 2px; right: 2px; bottom: 2px;
+      background: var(--bg);
     }
 
-    /* KPI Boxes */
-    .kpi { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-    .kpi .box {
-      border: 2px solid;
-      border-top-color: var(--bevel-dark);
-      border-left-color: var(--bevel-dark);
-      border-right-color: var(--bevel-light);
-      border-bottom-color: var(--bevel-light);
-      background: #fff;
-      padding: 8px;
-      text-align: center;
-    }
-    .kpi .n { font-family: var(--font-mono); font-size: 16px; font-weight: 700; }
-
-    /* Word Cloud */
-    .cloud {
-      min-height: 220px;
-      display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px;
-      background: #fff;
-      border: 2px solid;
-      border-top-color: var(--bevel-dark);
-      border-left-color: var(--bevel-dark);
-      border-right-color: var(--bevel-light);
-      border-bottom-color: var(--bevel-light);
-      padding: 12px;
-    }
-    .cloud span {
-      font-family: var(--font-mono);
-      color: var(--primary);
-      text-transform: uppercase;
-    }
-
-    /* Toggles */
-    .text-toggle { display: flex; gap: 8px; align-items: center; margin-bottom: 8px;}
-    .text-toggle button {
-      border: none; background: none; 
-      font-family: var(--font-mono); 
-      cursor: pointer; color: var(--text);
-      text-decoration: underline;
-    }
-    .text-toggle button.active { font-weight: bold; background: var(--primary); color: #fff; text-decoration: none; padding: 0 4px; }
-
-    /* Tables */
-    .table-scroll { 
-      overflow: auto; 
-      border: 2px solid;
-      border-top-color: var(--bevel-dark);
-      border-left-color: var(--bevel-dark);
-      border-right-color: var(--bevel-light);
-      border-bottom-color: var(--bevel-light);
-      background: #fff;
-    }
-    table.data-table, table.yr-table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 12px; color: #000;}
-    th { 
-      background: var(--card-bg); 
-      border-bottom: 2px solid #000; 
-      text-align: left; padding: 6px; 
-      font-weight: bold;
-    }
-    td { padding: 6px; border-bottom: 1px dotted #ccc; }
-    td.num, th.num { text-align: right; }
-    
-    /* Progress Bars - Chunky */
+    /* ---- 数据展示 ---- */
     .progress {
-      height: 14px;
-      background: #fff;
-      border: 2px solid;
-      border-top-color: var(--bevel-dark);
-      border-left-color: var(--bevel-dark);
-      border-right-color: var(--bevel-light);
-      border-bottom-color: var(--bevel-light);
-      padding: 1px;
+      height: 6px;
+      background: rgba(0,0,0,0.05);
+      border-radius: 99px;
+      overflow: hidden;
+      margin-top: 6px;
     }
     .bar {
       height: 100%; width: 0;
       background: var(--primary);
-      /* Stripes pattern */
-      background-image: linear-gradient(45deg,rgba(255,255,255,.15) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.15) 50%,rgba(255,255,255,.15) 75%,transparent 75%,transparent);
-      background-size: 10px 10px;
     }
 
-    /* Footer */
+    /* 表格 */
+    .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; padding: 10px 8px; font-weight: 600; opacity: 0.7; border-bottom: 1px solid var(--border); white-space: nowrap;}
+    td { padding: 12px 8px; border-bottom: 1px solid var(--border); }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    tr:last-child td { border-bottom: none; }
+
+    /* 词云 */
+    .cloud {
+      min-height: 200px;
+      display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px;
+      padding: 20px;
+    }
+    .cloud span {
+      color: var(--text);
+      opacity: 0.8;
+      /* 字体大小由JS控制，但这里给个过渡 */
+      transition: all 0.3s;
+    }
+
+    /* 底部 */
     .footer {
-      position: sticky; bottom: 0;
-      background: var(--card-bg);
-      border-top: 2px solid var(--bevel-light);
-      padding: 8px;
-      z-index: 10;
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      width: calc(100% - 40px); max-width: 800px;
+      z-index: 100;
+    }
+    .footer .card {
+      background: rgba(255,255,255,0.9);
+      backdrop-filter: blur(10px);
+      padding: 12px 20px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+      display: flex; justify-content: space-between; align-items: center;
+      border: 1px solid rgba(0,0,0,0.05);
     }
     
-    /* Printing/Export Mode */
-    .printing .card { box-shadow: none; border: 2px solid #000; }
-    .printing .footer { position: static; }
+    /* 切换按钮 */
+    .text-toggle button {
+      background: none; border: none; padding: 0; cursor: pointer;
+      font-family: var(--font-ui); color: var(--text); opacity: 0.4;
+      font-size: 12px;
+    }
+    .text-toggle button.active { opacity: 1; font-weight: 700; text-decoration: underline; text-decoration-color: var(--primary); text-underline-offset: 4px;}
 
-    /* Responsive Table */
+    /* 响应式表格调整 */
     @media (max-width:480px){
-      .yr-table.responsive tr {
-        border: 1px solid #000; margin-bottom: 8px; background: #fff;
-      }
-      .yr-table.responsive td { border-bottom: 1px solid #eee; display: flex; justify-content: space-between; }
+      .yr-table.responsive thead { display: none; }
+      .yr-table.responsive tr { display: block; border-bottom: 1px solid var(--border); padding: 12px 0; }
+      .yr-table.responsive td { display: flex; justify-content: space-between; border: none; padding: 4px 0; }
+      .yr-table.responsive td::before { content: attr(data-label); opacity: 0.6; }
     }
     
-    /* Utility */
+    /* 打印/导出模式 */
+    .printing .footer { position: static; transform: none; width: 100%; margin-top: 20px; }
+    .printing .card { box-shadow: none; border: 1px solid var(--border); }
     .visually-hidden { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
     .row.tight { gap: 8px; }
-    .model-row .bar { background: var(--primary); }
   </style>
 </head>
 <body>
   <div class="wrap stack">
-    <section class="card stack" id="top">
-      <div class="section-title">SYSTEM_CONFIG.EXE</div>
+    <section class="card dark-mode stack" id="top">
       <header>
-        <h1 class="h1">Echo: <span id="title-name">My GPT</span></h1>
-        <p class="muted">> A Year by the Numbers_</p>
+        <div class="row" style="justify-content: space-between; align-items:flex-start;">
+            <div>
+                <h1 class="h1">Echo：<span id="title-name">My GPT</span></h1>
+                <p class="muted">年度数据可视化报告 // ANALOG_LOG_V2.5</p>
+            </div>
+            <div style="text-align:right; opacity:0.5; font-size:10px;">
+                <span style="display:inline-block; width:8px; height:8px; background:var(--primary); border-radius:50%; margin-right:4px;"></span>
+                LIVE
+            </div>
+        </div>
       </header>
 
-      <div class="stack">
+      <div class="stack" style="margin-top:10px;">
         <div class="row tight">
           <input type="file" id="file" accept=".json,application/json" class="visually-hidden" />
-          <label for="file" class="btn secondary" id="btn-file">[ LOAD FILE ]</label>
-          <span id="file-name" class="small muted">NO_FILE_SELECTED</span>
-          <button class="btn" id="btn-parse">RUN PARSER</button>
-          <button class="btn secondary" id="btn-cancel">ABORT</button>
+          <label for="file" class="btn secondary" style="color:var(--text-highlight); border-color:rgba(255,255,255,0.3)" id="btn-file">选择文件</label>
+          <span id="file-name" class="small muted">等待数据导入...</span>
+          <button class="btn" style="background:var(--text-highlight); color:var(--card-highlight);" id="btn-parse">开始解析</button>
+          <button class="btn secondary" style="color:var(--text-highlight); border-color:rgba(255,255,255,0.3)" id="btn-cancel">重置</button>
         </div>
 
         <div class="row">
-          <div style="flex:2;min-width:260px">
-            <label class="small">SYSTEM_NAME:</label>
-            <input id="title-input" type="text" placeholder="Enter custom name..."/>
+          <div style="flex:2;min-width:200px">
+            <label class="small muted" style="display:block; margin-bottom:4px;">RENAME // 标题替换</label>
+            <input id="title-input" type="text" placeholder="例如：我的赛博男友"/>
           </div>
-          <div style="flex:1;min-width:180px">
-            <label class="small">COLOR_SCHEME:</label>
+          <div style="flex:1;min-width:140px">
+            <label class="small muted" style="display:block; margin-bottom:4px;">THEME // 界面风格</label>
             <select id="theme">
-              <option value="Fable">Windows 95 (Teal)</option>
-              <option value="Galaxy">Vaporwave (Pink)</option>
-              <option value="Ferry">Terminal (Green)</option>
-              <option value="Ember">Hotdog (Red/Yel)</option>
+              <option value="Fable">Fable (暖调)</option>
+              <option value="Galaxy">Galaxy (紫灰)</option>
+              <option value="Ferry">Ferry (复古绿)</option>
+              <option value="Ember">Ember (陶土)</option>
             </select>
           </div>
         </div>
 
         <div class="row">
-          <label class="pill"><input type="checkbox" id="mask"/> <span>ANONYMIZE_DATA</span></label>
+          <label class="pill"><input type="checkbox" id="mask"/> <span class="muted">数据脱敏模式</span></label>
         </div>
 
-        <div class="stack">
+        <div class="stack" style="gap:10px; margin-top:8px;">
           <div>
-            <span class="small">PARSING_STATUS:</span>
-            <div class="progress"><div class="bar" id="p-parse"></div></div>
+            <div style="display:flex; justify-content:space-between;" class="small muted"><span>解析进度</span> <span id="p-parse-val"></span></div>
+            <div class="progress" style="background:rgba(255,255,255,0.1)"><div class="bar" style="background:var(--primary)" id="p-parse"></div></div>
           </div>
           <div>
-            <span class="small">DB_SHARDING:</span>
-            <div class="progress"><div class="bar" id="p-shard"></div></div>
+            <div style="display:flex; justify-content:space-between;" class="small muted"><span>统计计算</span> <span id="stats-phase-label"></span></div>
+            <div class="progress" style="background:rgba(255,255,255,0.1)"><div class="bar" style="background:var(--primary)" id="p-stat"></div></div>
           </div>
-          <div>
-            <span class="small">CALCULATING_STATS:</span>
-            <div class="small muted" id="stats-phase-label"></div>
-            <div class="progress"><div class="bar" id="p-stat"></div></div>
-          </div>
+           <div style="height:0; overflow:hidden"><div class="bar" id="p-shard"></div></div>
         </div>
       </div>
     </section>
 
     <main class="stack" id="results">
       <section class="card stack" id="card-yearly">
-        <div class="section-title">YEARLY_LOG.TXT</div>
+        <div class="section-title">01 / YEARLY OVERVIEW (年度概览)</div>
         <div class="table-scroll">
           <table class="yr-table" id="yearly-table">
             <thead>
               <tr>
-                <th><span class="full">YEAR</span><span class="abbr">YR</span></th>
-                <th><span class="full">TOTAL_MSGS</span><span class="abbr">MSG</span></th>
-                <th><span class="full">TOTAL_CHARS</span><span class="abbr">CHR</span></th>
-                <th><span class="full">IMAGES</span><span class="abbr">IMG</span></th>
-                <th><span class="full">AVG_DAILY</span><span class="abbr">AVG</span></th>
-                <th><span class="full">PEAK_MONTH</span><span class="abbr">PEAK</span></th>
-                <th><span class="full">GPT_AVG_LEN</span><span class="abbr">GPT</span></th>
-                <th><span class="full">STREAK</span><span class="abbr">STR</span></th>
+                <th>年份</th>
+                <th>消息总条数</th>
+                <th>总字数</th>
+                <th>总图片数</th>
+                <th>日均字数</th>
+                <th>最活跃月</th>
+                <th>GPT平均字数</th>
+                <th>连续活跃</th>
               </tr>
             </thead>
             <tbody>
-              <tr><td colspan="8" class="muted">WAITING FOR INPUT...</td></tr>
+              <tr><td colspan="8" class="muted" style="text-align:center; padding:40px 0;">等待数据...</td></tr>
             </tbody>
           </table>
         </div>
       </section>
 
       <section class="card stack" id="card-cloud">
-        <div class="section-title">MEMORY_DUMP (TOP 10)</div>
-        <div class="text-toggle small" id="cloud-toggle" role="group" aria-label="视图切换">
-          <button type="button" data-mode="phrases" class="active" aria-pressed="true">[PHRASES]</button>
-          <span>/</span>
-          <button type="button" data-mode="words" aria-pressed="false">[WORDS]</button>
+        <div class="row" style="justify-content:space-between;">
+            <div class="section-title" style="margin-bottom:0; border-bottom:none;">02 / TOP 10 KEYWORDS (记忆碎片)</div>
+            <div class="text-toggle small" id="cloud-toggle" role="group">
+            <button type="button" data-mode="phrases" class="active">词组</button>
+            <span style="opacity:0.2">|</span>
+            <button type="button" data-mode="words">单字</button>
+            </div>
         </div>
-        <div class="cloud" id="cloud">
-          <span class="muted">NO DATA</span>
+        <div style="border-top:1px dashed var(--border); margin-top:8px; padding-top:10px;">
+            <div class="cloud" id="cloud">
+            <span class="muted small">暂无数据</span>
+            </div>
         </div>
       </section>
 
       <section class="card stack" id="card-models">
-        <div class="section-title">MODEL_USAGE_STATS</div>
-        <p class="small muted">> Analysis of Assistant responses (Tools excluded).</p>
-        <div class="row small" style="align-items:center; gap:8px;">
-          <label class="muted" for="window">TIMEFRAME:</label>
-          <select id="window">
-            <option value="all">ALL_TIME</option>
+        <div class="section-title">03 / MODEL USAGE (模型偏好)</div>
+        <div class="row small" style="align-items:center; gap:8px; margin-bottom:12px;">
+          <label class="muted" for="window">统计范围：</label>
+          <select id="window" style="width:auto; padding:4px 8px;">
+            <option value="all">全部时间</option>
           </select>
+          <span class="muted small" style="margin-left:auto;">* 仅统计助手回复</span>
         </div>
         <div id="models-chart" class="table-scroll">
-          <span class="muted">WAITING...</span>
+          <span class="muted small" style="display:block; text-align:center; padding:20px;">等待计算...</span>
         </div>
       </section>
     </main>
 
     <footer class="footer">
-      <div class="row" style="justify-content:space-between;align-items:center">
-        <span class="small muted">READY.</span>
-        <button class="btn" id="btn-save">EXPORT_IMAGE.PNG</button>
+      <div class="card">
+        <span class="small muted">Echo: My GPT Analysis</span>
+        <button class="btn" id="btn-save">保存为长图</button>
       </div>
     </footer>
   </div>
@@ -700,7 +680,6 @@
       buttons.forEach((btn) => {
         const isActive = btn.dataset.mode === nextMode;
         btn.classList.toggle('active', isActive);
-        btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
       });
     }
 
@@ -732,12 +711,12 @@
         .sort((a, b) => b - a); // 降序排列
       
       const currentValue = modelWindowSelect.value;
-      modelWindowSelect.innerHTML = '<option value="all">ALL_TIME</option>';
+      modelWindowSelect.innerHTML = '<option value="all">全部时间</option>';
       
       years.forEach(year => {
         const option = document.createElement('option');
         option.value = String(year);
-        option.textContent = `${year}`;
+        option.textContent = `${year}年`;
         modelWindowSelect.appendChild(option);
       });
       
@@ -764,11 +743,11 @@
 
     fileInput.addEventListener('change', () => {
       const fileName = fileInput.files?.[0]?.name || '';
-      fileNameSpan.textContent = fileName ? `FILE: ${fileName}` : '';
+      fileNameSpan.textContent = fileName ? `已选: ${fileName}` : '';
     });
     parseBtn.addEventListener('click', async ()=>{
       if(currentRunPromise){ return; }
-      if(!fileInput.files?.[0]){ alert('ERROR: INSERT JSON DISK'); return; }
+      if(!fileInput.files?.[0]){ alert('请先选择文件'); return; }
 
       cancelRequested = false;
       
@@ -795,7 +774,7 @@
       yearlyState.data = {};
       renderYearlyOverview({});
       parseBtn.disabled = true;
-      parseBtn.textContent = 'RUNNING...';
+      parseBtn.textContent = '处理中…';
       cancelBtn.disabled = false;
       
 
@@ -831,7 +810,7 @@
           }
         } catch (err) {
           if (err?.name !== 'AbortError') {
-            const label = err?.__stats ? 'STATS_FAIL' : 'PARSE_FAIL';
+            const label = err?.__stats ? '统计失败' : '解析失败';
             console.error(label, err);
           }
         } finally {
@@ -937,14 +916,14 @@
       };
 
       const columnLabels = {
-        year: 'YR',
-        messages: 'MSG',
-        chars: 'CHR',
-        images: 'IMG',
-        avgPerDay: 'AVG',
-        topMonth: 'PEAK',
-        avgAssistant: 'GPT',
-        streaks: 'STR',
+        year: '年份',
+        messages: '消息总数',
+        chars: '总字数',
+        images: '图片数',
+        avgPerDay: '日均',
+        topMonth: '最活跃',
+        avgAssistant: 'GPT均长',
+        streaks: '连续活跃',
       };
 
       const resolveActiveDays = (days) => {
@@ -1011,7 +990,9 @@
         const cell = document.createElement('td');
         cell.colSpan = 8;
         cell.className = 'muted';
-        cell.textContent = 'NO DATA';
+        cell.style.textAlign = 'center';
+        cell.style.padding = '30px';
+        cell.textContent = '等待解析数据...';
         row.appendChild(cell);
         tbody.appendChild(row);
         updateYearlyTableResponsive();
@@ -1019,7 +1000,7 @@
       }
 
       const derived = computeYearlyMetrics(summary);
-      const monthLabels = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+      const monthLabels = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
 
       entries.forEach(([year, value]) => {
         const entry = value || {};
@@ -1056,12 +1037,13 @@
         const yearCell = document.createElement('td');
         yearCell.setAttribute('data-label', columnLabels.year);
         const yearMain = document.createElement('div');
+        yearMain.style.fontWeight = '700';
         yearMain.textContent = String(year);
         yearCell.appendChild(yearMain);
         if (activeDayCount > 0) {
           const sub = document.createElement('div');
           sub.className = 'small muted';
-          sub.textContent = `ACT: ${formatNumber(activeDayCount)}d`;
+          sub.textContent = `活跃 ${formatNumber(activeDayCount)} 天`;
           yearCell.appendChild(sub);
         }
         row.appendChild(yearCell);
@@ -1108,7 +1090,7 @@
         topMonthCell.setAttribute('data-label', columnLabels.topMonth);
         if (Number.isInteger(mostActiveMonth) && mostActiveMonth > 0) {
           const idx = Math.min(mostActiveMonth - 1, monthLabels.length - 1);
-          const monthLabel = monthLabels[idx] || `${mostActiveMonth}`;
+          const monthLabel = monthLabels[idx] || `${mostActiveMonth}月`;
           const charsForMonth = Number(charsByMonth[idx]);
           const main = document.createElement('div');
           main.textContent = monthLabel;
@@ -1137,12 +1119,12 @@
         const streakMain = document.createElement('div');
         const streakCountText = formatNumber(streakStats.streakCount || 0);
         const longestText = formatNumber(streakStats.longestStreak || 0);
-        streakMain.textContent = `${streakCountText}/${longestText}`;
+        streakMain.textContent = `${streakCountText} / ${longestText}`;
         streakCell.appendChild(streakMain);
         if (activeDayCount > 0) {
           const sub = document.createElement('div');
           sub.className = 'small muted';
-          sub.textContent = `ACT: ${formatNumber(activeDayCount)}`;
+          sub.textContent = `活跃天数 ${formatNumber(activeDayCount)}`;
           streakCell.appendChild(sub);
         }
         row.appendChild(streakCell);
@@ -1175,9 +1157,9 @@
     }
 
     function resolveWindowLabel(windowOpt) {
-        if (windowOpt === 'all') return 'ALL_TIME';
+        if (windowOpt === 'all') return '全部时间';
         const year = Number(windowOpt);
-        if (!isNaN(year)) return `${year}`;
+        if (!isNaN(year)) return `${year}年`;
         return windowOpt;
     }
     
@@ -1188,7 +1170,10 @@
       if (modelsState.loading) {
         const loading = document.createElement('span');
         loading.className = 'muted';
-        loading.textContent = 'COMPUTING...';
+        loading.style.display = 'block';
+        loading.style.padding = '20px';
+        loading.style.textAlign = 'center';
+        loading.textContent = '计算模型数据中...';
         modelsChartHost.appendChild(loading);
         return;
       }
@@ -1207,7 +1192,10 @@
       if (!rows.length || total <= 0) {
         const placeholder = document.createElement('span');
         placeholder.className = 'muted';
-        placeholder.textContent = 'NO_MODEL_STATS';
+        placeholder.style.display = 'block';
+        placeholder.style.padding = '20px';
+        placeholder.style.textAlign = 'center';
+        placeholder.textContent = '暂无模型统计数据';
         modelsChartHost.appendChild(placeholder);
         return;
       }
@@ -1217,7 +1205,7 @@
 
       const thead = document.createElement('thead');
       const headRow = document.createElement('tr');
-      ['MODEL', 'COUNT', 'SHARE'].forEach((label, idx) => {
+      ['模型名称', '消息数', '占比'].forEach((label, idx) => {
         const th = document.createElement('th');
         th.textContent = label;
         if (idx > 0) th.className = 'num';
@@ -1236,20 +1224,21 @@
           dividerRow.style.background = 'transparent'; 
           const dividerCell = document.createElement('td');
           dividerCell.colSpan = 3;
-          dividerCell.style.cssText = 'padding:0; height:1px; background:#000;';
+          dividerCell.style.cssText = 'padding:0; height:1px; background:var(--border);';
           dividerRow.appendChild(dividerCell);
           tbody.appendChild(dividerRow);
           needsDivider = false;
         }
         
         const tr = document.createElement('tr');
-        if (dataRowIndex % 2 !== 0) {
-          tr.style.background = 'rgba(0,0,0,.05)'; 
-        }
+        // if (dataRowIndex % 2 !== 0) {
+        //   tr.style.background = 'rgba(0,0,0,.02)'; 
+        // }
         dataRowIndex++;
 
         const modelCell = document.createElement('td');
-        modelCell.textContent = entry.label || entry.id || 'UNKNOWN';
+        modelCell.textContent = entry.label || entry.id || '未知模型';
+        modelCell.style.fontFamily = 'var(--font-ui)';
         tr.appendChild(modelCell);
 
         const msgCell = document.createElement('td');
@@ -1270,8 +1259,10 @@
       modelsChartHost.appendChild(table);
 
       const meta = document.createElement('div');
-      meta.className = 'models-meta';
-      meta.textContent = `WINDOW: ${resolveWindowLabel(modelsState.window)} (ASSISTANT ONLY) · TOTAL: ${formatModelNumber(total)}`;
+      meta.className = 'models-meta small muted';
+      meta.style.marginTop = '12px';
+      meta.style.textAlign = 'right';
+      meta.textContent = `窗口：${resolveWindowLabel(modelsState.window)} · 总计 ${formatModelNumber(total)} 条`;
       modelsChartHost.appendChild(meta);
     }
 
@@ -1316,7 +1307,7 @@
         shards = await listShards();
       } catch (err) {
         modelsState.loading = false;
-        modelsState.error = 'DB_ERROR';
+        modelsState.error = '数据库读取失败';
         console.error('Failed to list shards for model share', err);
         renderModelShare();
         return;
@@ -1360,8 +1351,8 @@
       const host=document.getElementById('cloud'); host.innerHTML='';
       if(!Array.isArray(words) || !words.length){
         const placeholder=document.createElement('span');
-        placeholder.className='muted';
-        placeholder.textContent='NO DATA';
+        placeholder.className='muted small';
+        placeholder.textContent='暂无数据';
         host.appendChild(placeholder);
         return;
       }
@@ -1376,9 +1367,12 @@
         const weight = Number.isFinite(score) && score > 0 ? score / base : 0;
         const el=document.createElement('span');
         el.textContent=w.text;
-        el.style.fontSize=(14+Math.round(26*weight))+'px';
+        el.style.fontSize=(12+Math.round(24*weight))+'px';
         el.style.setProperty('--w', weight);
         el.setAttribute('data-w', String(weight));
+        // 复古风：透明度变化
+        el.style.opacity = 0.4 + (weight * 0.6);
+        el.style.fontWeight = weight > 0.6 ? '700' : '400';
         host.appendChild(el);
       });
     }
@@ -1436,22 +1430,22 @@
 
     // —— 保存为图片（防截断版） —— //
     document.getElementById('btn-save').addEventListener('click', async ()=>{
-      if(!window.html2canvas){ alert('ERROR: HTML2CANVAS_MISSING'); return; }
+      if(!window.html2canvas){ alert('无法使用内置导出，请手动截图'); return; }
 
       const root=document.documentElement, body=document.body;
 
       // 创建临时导出容器
       const exportContainer = document.createElement('div');
-      exportContainer.style.cssText = 'padding:24px; background:'+getComputedStyle(document.body).backgroundColor;
+      exportContainer.style.cssText = 'padding:40px; background:'+getComputedStyle(document.body).backgroundColor;
 
       // 克隆标题
       const titleClone = document.createElement('div');
       titleClone.innerHTML = `
-        <h1 style="font-size:24px;font-weight:700;margin:0 0 8px;color:var(--text);font-family:var(--font-mono)">
-          ECHO_LOG: <span>${document.getElementById('title-name').textContent}</span>
+        <h1 style="font-size:24px;font-weight:700;margin:0 0 8px;color:var(--text);font-family:var(--font-ui)">
+          Echo：<span>${document.getElementById('title-name').textContent}</span>
         </h1>
-        <p style="opacity:.65;font-size:14px;margin:0 0 24px;color:var(--text);font-family:var(--font-mono)">
-          > EXPORT_TIMESTAMP: ${new Date().toISOString()}_
+        <p style="opacity:.6;font-size:12px;margin:0 0 32px;color:var(--text);font-family:var(--font-ui); letter-spacing:1px;">
+          EXPORT DATE: ${new Date().toLocaleDateString()}
         </p>
       `;
 
@@ -1496,10 +1490,10 @@
         const safeName = document.getElementById('title-name').textContent.replace(/[\/\\:*?"<>|]/g, '-');
         const a = document.createElement('a');
         a.href = framed.toDataURL('image/png');
-        a.download = `ECHO_${safeName}_DUMP.png`;
+        a.download = `Echo_${safeName}_Report.png`;
         a.click();
       } catch(e) {
-        alert('ERROR: IMAGE_TOO_LARGE');
+        alert('图片太大，导出失败。建议手动截图。');
       }
 
       root.classList.remove('printing');
@@ -1512,11 +1506,6 @@
     });
     state.mask = !!maskInput?.checked;
     refreshCloud();
-
-    // —— 范围切换占位 —— //
-    document.querySelectorAll('input[name="scope"]').forEach(r=>{
-      r.addEventListener('change', ()=>{ });
-    });
   </script>
 </body>
 </html>
