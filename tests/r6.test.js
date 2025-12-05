@@ -358,6 +358,11 @@ test('tokenize normalizes aliases before downstream scoring', () => {
   assert.deepEqual(tokens, ['chatgpt', 'openai', 'gpt4'], 'underscored variants collapse to canonical tokens');
 });
 
+test('tokenize removes CJK stopwords even when adjacent', () => {
+  const tokens = tokenize('我现在已经一边工作一边学习');
+  assert.deepEqual(tokens, ['我', '工', '作', '学', '习'], 'CJK stopwords should be stripped before tokenization');
+});
+
 test('whitelisted phrases receive a modest scoring bonus', () => {
   assert.ok(
     WHITELIST.has('openai') && WHITELIST.has('chatgpt'),
