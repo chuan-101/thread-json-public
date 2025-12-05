@@ -1099,14 +1099,16 @@ parseBtn.addEventListener('click', async ()=>{
     const tr = document.createElement('tr');
     
     // ← 手动设置斑马纹背景色
-    if (dataRowIndex % 2 === 1) {
-      tr.style.background = 'rgba(0,0,0,.04)';
-    }
-    dataRowIndex++; // ← 数据行计数+1
+    if (dataRowIndex % 2 === 0) {
+    tr.style.background = 'transparent'; // 偶数行：无底色
+  } else {
+    tr.style.background = 'rgba(0,0,0,.04)'; // 奇数行：深底色
+  }
+  dataRowIndex++;
 
-    const modelCell = document.createElement('td');
-    modelCell.textContent = entry.label || entry.id || '未知模型';
-    tr.appendChild(modelCell);
+  const modelCell = document.createElement('td');
+  modelCell.textContent = entry.label || entry.id || '未知模型';
+  tr.appendChild(modelCell);
 
     const msgCell = document.createElement('td');
     msgCell.className = 'num';
