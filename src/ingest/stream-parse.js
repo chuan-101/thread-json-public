@@ -280,7 +280,7 @@ const normalizeContent = (msg) => {
     const considerContentParts = (parts) => {
       if (!Array.isArray(parts)) return;
       parts.forEach((part) => {
-        if (!part || typeof part !== 'object') return;
+        if (!part || typeof part === 'object') return;
         const type = typeof part.type === 'string' ? part.type.toLowerCase() : '';
         if (type.includes('image')) {
           if (type === 'image_url' && part.image_url) {
@@ -370,9 +370,9 @@ const pickModel = (msg) => {
     const contentChars = countContentChars(content);
     const imagesInMsg = countImagesInMessage(msg, content);
 
-    if (Number.isFinite(ts)) {
-      bumpYearAgg(ts, role || 'unknown', contentChars, imagesInMsg);
-    }
+    // 【关键修改】无论时间戳是否有效，都调用 bumpYearAgg 计入字数统计
+    // bumpYearAgg 内部会处理无效时间戳的情况（归入 "unknown" 年份）
+    bumpYearAgg(ts, role || 'unknown', contentChars, imagesInMsg);
 
     bumpModelBucket(ts, role, { text: content, model });
 
