@@ -29,7 +29,7 @@
       --text-highlight: #f2f0e6;/* 反色卡片上的文字 */
       --primary: #c97c7c;       /* 莫兰迪红 */
       --accent: #8FA3A3;        /* 灰调青 */
-      --border: rgba(44, 44, 44, 0.1);
+      --border: rgba(44, 44, 44, 0.3);
     }
 
     /* ---- Theme: Galaxy (柔和紫灰 - 梦境感) ---- */
@@ -41,7 +41,7 @@
       --text-highlight: #e8e6f0;
       --primary: #948cb5;
       --accent: #b5a4c9;
-      --border: rgba(42, 42, 53, 0.1);
+      --border: rgba(42, 42, 53, 0.3);
     }
     
     /* ---- Theme: Ferry (Gameboy - 复古液晶屏) ---- */
@@ -53,7 +53,7 @@
       --text-highlight: #E3E8E3;
       --primary: #6B8E6B;
       --accent: #2A3B2A;
-      --border: rgba(42, 59, 42, 0.15);
+      --border: rgba(42, 59, 42, 0.3);
     }
 
     /* ---- Theme: Ember (暖阳 - 陶土色) ---- */
@@ -65,7 +65,7 @@
       --text-highlight: #E6DFD8;
       --primary: #9E6B64;
       --accent: #8C6A5D;
-      --border: rgba(92, 64, 60, 0.15);
+      --border: rgba(92, 64, 60, 0.3);
     }
 
     /* ---- 全局重置与纹理 ---- */
@@ -1040,7 +1040,7 @@
       // 3. 开始渲染小票
       // 注意：这里需要依赖外部的 computeYearlyMetrics，这是原本就在外部导入的，所以没问题
       const derived = computeYearlyMetrics(summary);
-      const monthLabels = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+      const monthLabels = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
 
       entries.forEach(([year, value]) => {
         const entry = value || {};
@@ -1093,13 +1093,13 @@
             <div class="ticket-cell">
               <span class="t-label">日均字数</span>
               <span class="t-value">${avg(avgDaily)}</span>
-              <span class="t-sub">CHARS / DAY</span>
+              <span class="t-sub">字数 / 天</span>
             </div>
             
             <div class="ticket-cell">
               <span class="t-label">GPT平均字数</span>
               <span class="t-value">${avg(gptAvgLen)}</span>
-              <span class="t-sub">CHARS / MSG</span>
+              <span class="t-sub">字数 / 条</span>
             </div>
 
             <div class="ticket-cell">
