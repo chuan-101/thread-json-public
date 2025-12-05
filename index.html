@@ -393,6 +393,71 @@
       display:flex; align-items:center; justify-content:center;
       font-weight:bold; font-size:12px;
     }
+
+    /* ---- 模型占比：模拟信号条风格 ---- */
+    
+    .model-list {
+      display: flex;
+      flex-direction: column;
+      gap: 20px; /* 模型之间的间距，宽松一点 */
+      padding: 10px 0;
+    }
+
+    .model-item {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    /* 头部信息：左边名字，右边数据 */
+    .m-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      font-family: var(--font-ui);
+    }
+    
+    .m-name {
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--text);
+      letter-spacing: 0.5px;
+    }
+
+    .m-stats {
+      font-size: 12px;
+      opacity: 0.7;
+    }
+    
+    .m-stats strong {
+      color: var(--text); /* 让数字深一点 */
+      font-weight: 600;
+    }
+
+    /* 进度条轨道 */
+    .m-track {
+      height: 6px; /* 细长条 */
+      background: rgba(0,0,0, 0.06); /* 淡淡的底色 */
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* 进度条本体 */
+    .m-bar {
+      height: 100%;
+      background: var(--primary); /* 跟随主题色 */
+      border-radius: 4px;
+      min-width: 4px; /* 保证极小数值也能看到一点点 */
+      transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1); /* 丝滑动画 */
+    }
+    
+    /* 给前三名加一点特殊待遇？ */
+    .model-item:nth-child(1) .m-bar { opacity: 1; }
+    .model-item:nth-child(2) .m-bar { opacity: 0.8; }
+    .model-item:nth-child(3) .m-bar { opacity: 0.6; }
+    /* 后面的稍微淡一点，制造层次感 */
+    .model-item:nth-child(n+4) .m-bar { opacity: 0.4; }
   </style>
 </head>
 <body>
@@ -478,7 +543,7 @@
         </div>
       </section>
 
-      <section class="card stack" id="card-models">
+      <section class="card dark-mode stack" id="card-models">
         <div class="section-title">03 / MODEL USAGE (模型偏好)</div>
         <div class="row small" style="align-items:center; gap:8px; margin-bottom:12px;">
           <label class="muted" for="window">统计范围：</label>
@@ -1179,26 +1244,17 @@
         return windowOpt;
     }
     
-    function renderModelShare() {
+   function renderModelShare() {
       if (!modelsChartHost) return;
       modelsChartHost.innerHTML = '';
 
       if (modelsState.loading) {
-        const loading = document.createElement('span');
-        loading.className = 'muted';
-        loading.style.display = 'block';
-        loading.style.padding = '20px';
-        loading.style.textAlign = 'center';
-        loading.textContent = '计算模型数据中...';
-        modelsChartHost.appendChild(loading);
+        modelsChartHost.innerHTML = '<div class="muted small" style="text-align:center; padding:30px;">正在扫描频段...</div>';
         return;
       }
 
       if (modelsState.error) {
-        const error = document.createElement('span');
-        error.className = 'muted';
-        error.textContent = modelsState.error;
-        modelsChartHost.appendChild(error);
+        modelsChartHost.innerHTML = `<div class="muted small" style="text-align:center; padding:30px;">信号丢失: ${modelsState.error}</div>`;
         return;
       }
 
@@ -1206,82 +1262,62 @@
       const total = Number(modelsState?.share?.total) || 0;
 
       if (!rows.length || total <= 0) {
-        const placeholder = document.createElement('span');
-        placeholder.className = 'muted';
-        placeholder.style.display = 'block';
-        placeholder.style.padding = '20px';
-        placeholder.style.textAlign = 'center';
-        placeholder.textContent = '暂无模型统计数据';
-        modelsChartHost.appendChild(placeholder);
+        modelsChartHost.innerHTML = '<div class="muted small" style="text-align:center; padding:30px;">无信号数据</div>';
         return;
       }
 
-      const table = document.createElement('table');
-      table.className = 'data-table';
+      // 格式化数字
+      const fmt = new Intl.NumberFormat('en-US');
+      const num = (v) => Number.isFinite(v) ? fmt.format(v) : '0';
 
-      const thead = document.createElement('thead');
-      const headRow = document.createElement('tr');
-      ['模型名称', '消息数', '占比'].forEach((label, idx) => {
-        const th = document.createElement('th');
-        th.textContent = label;
-        if (idx > 0) th.className = 'num';
-        headRow.appendChild(th);
-      });
-      thead.appendChild(headRow);
-      table.appendChild(thead);
+      // 创建容器
+      const list = document.createElement('div');
+      list.className = 'model-list';
 
-      const tbody = document.createElement('tbody');
-      let needsDivider = true;
-      let dataRowIndex = 0; 
-      
-      rows.forEach((entry) => {
-        if (needsDivider && (entry.label === 'Tools' || entry.label === 'Unknown')) {
-          const dividerRow = document.createElement('tr');
-          dividerRow.style.background = 'transparent'; 
-          const dividerCell = document.createElement('td');
-          dividerCell.colSpan = 3;
-          dividerCell.style.cssText = 'padding:0; height:1px; background:var(--border);';
-          dividerRow.appendChild(dividerCell);
-          tbody.appendChild(dividerRow);
-          needsDivider = false;
+      let otherMessages = 0;
+      let otherShare = 0;
+
+      rows.forEach((entry, index) => {
+        // 过滤掉 Tools 和 Unknown，或者你可以选择保留
+        if (entry.label === 'Tools' || entry.label === 'Unknown') {
+             // 也可以选择不显示，或者合并显示
+             return; 
         }
+
+        const pct = (Number(entry.share) || 0) * 100;
+        const pctDisplay = pct.toFixed(1) + '%';
+        const countDisplay = num(entry.messages);
         
-        const tr = document.createElement('tr');
-        // if (dataRowIndex % 2 !== 0) {
-        //   tr.style.background = 'rgba(0,0,0,.02)'; 
-        // }
-        dataRowIndex++;
-
-        const modelCell = document.createElement('td');
-        modelCell.textContent = entry.label || entry.id || '未知模型';
-        modelCell.style.fontFamily = 'var(--font-ui)';
-        tr.appendChild(modelCell);
-
-        const msgCell = document.createElement('td');
-        msgCell.className = 'num';
-        msgCell.textContent = formatModelNumber(entry.messages);
-        tr.appendChild(msgCell);
-
-        const shareCell = document.createElement('td');
-        shareCell.className = 'num';
-        const pctLabel = Math.round((Number(entry.share) || 0) * 1000) / 10;
-        shareCell.textContent = `${pctLabel.toFixed(1)}%`;
-        tr.appendChild(shareCell);
-
-        tbody.appendChild(tr);
+        // 构建条目
+        const item = document.createElement('div');
+        item.className = 'model-item';
+        item.innerHTML = `
+          <div class="m-header">
+            <div class="m-name">${entry.label || entry.id}</div>
+            <div class="m-stats">
+              <strong>${pctDisplay}</strong> <span style="opacity:0.5; margin-left:4px;">(${countDisplay})</span>
+            </div>
+          </div>
+          <div class="m-track">
+            <div class="m-bar" style="width: ${pct}%"></div>
+          </div>
+        `;
+        list.appendChild(item);
       });
 
-      table.appendChild(tbody);
-      modelsChartHost.appendChild(table);
-
+      // 底部元数据
       const meta = document.createElement('div');
-      meta.className = 'models-meta small muted';
-      meta.style.marginTop = '12px';
+      meta.className = 'muted small';
       meta.style.textAlign = 'right';
-      meta.textContent = `窗口：${resolveWindowLabel(modelsState.window)} · 总计 ${formatModelNumber(total)} 条`;
-      modelsChartHost.appendChild(meta);
+      meta.style.marginTop = '10px';
+      meta.style.borderTop = '1px dashed var(--border)';
+      meta.style.paddingTop = '10px';
+      meta.textContent = `总计捕捉信号: ${num(total)} 条`;
+      
+      list.appendChild(meta);
+      modelsChartHost.appendChild(list);
     }
-
+    
     function recomputeModelShareView() {
       const messages = Array.isArray(modelsState.messages) ? modelsState.messages : [];
       const windowValue = modelsState.window;
