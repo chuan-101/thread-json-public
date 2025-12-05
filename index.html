@@ -597,12 +597,7 @@ function populateYearOptions() {
     modelWindowSelect.appendChild(option);
   });
   
-  // 恢复之前的选择（如果还存在）
-  if (years.includes(Number(currentValue))) {
-    modelWindowSelect.value = currentValue;
-  } else if (years.length > 0) {
-    modelWindowSelect.value = String(years[0]); // 默认选最新年份
-  }
+  modelWindowSelect.value = 'all';
 }
 
 if (modelWindowSelect) {
@@ -1089,21 +1084,29 @@ parseBtn.addEventListener('click', async ()=>{
   table.appendChild(thead);
 
   const tbody = document.createElement('tbody');
-  let needsDivider = true; // 标记是否需要插入分隔线
+  let needsDivider = true;
+  let dataRowIndex = 0; // ← 只计数真正的数据行
   
   rows.forEach((entry) => {
     // 检测到 Tools 或 Unknown 时，插入分隔线
     if (needsDivider && (entry.label === 'Tools' || entry.label === 'Unknown')) {
       const dividerRow = document.createElement('tr');
+      dividerRow.style.background = 'transparent'; // ← 分隔线不参与斑马纹
       const dividerCell = document.createElement('td');
       dividerCell.colSpan = 3;
       dividerCell.style.cssText = 'padding:0; height:1px; background:rgba(0,0,0,.12);';
       dividerRow.appendChild(dividerCell);
       tbody.appendChild(dividerRow);
-      needsDivider = false; // 只插入一次
+      needsDivider = false;
     }
     
     const tr = document.createElement('tr');
+    
+    // ← 手动设置斑马纹背景色
+    if (dataRowIndex % 2 === 1) {
+      tr.style.background = 'rgba(0,0,0,.04)';
+    }
+    dataRowIndex++; // ← 数据行计数+1
 
     const modelCell = document.createElement('td');
     modelCell.textContent = entry.label || entry.id || '未知模型';
