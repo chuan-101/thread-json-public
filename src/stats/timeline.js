@@ -23,24 +23,34 @@ export function resetYearAgg() {
 
 export function bumpYearAgg(ts, role, contentLen, imagesInMsg = 0) {
   const timestamp = Number(ts);
-  if (!Number.isFinite(timestamp)) {
-    return;
+  let year;
+  let monthIndex = -1;
+  let dayKey = null;
+
+  // 尝试解析时间戳
+  if (Number.isFinite(timestamp) && timestamp > 0) {
+    const date = new Date(timestamp);
+    if (!Number.isNaN(date.getTime())) {
+      year = date.getUTCFullYear();
+      monthIndex = date.getUTCMonth();
+      const month = `${monthIndex + 1}`.padStart(2, '0');
+      const day = `${date.getUTCDate()}`.padStart(2, '0');
+      dayKey = `${year}-${month}-${day}`;
+    }
   }
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) {
-    return;
+
+  // 如果时间戳无效，归入 "unknown" 年份，但仍然计入字数
+  if (year == null) {
+    year = 'unknown';
   }
-  const year = date.getUTCFullYear();
-  const monthIndex = date.getUTCMonth();
-  const month = `${monthIndex + 1}`.padStart(2, '0');
-  const day = `${date.getUTCDate()}`.padStart(2, '0');
-  const dayKey = `${year}-${month}-${day}`;
 
   const entry = ensureYearEntry(year);
   entry.totalMessages += 1;
 
   const length = Number.isFinite(contentLen) ? contentLen : 0;
   entry.totalChars += length;
+  
+  // 只有有效的月份索引才计入月度统计
   if (monthIndex >= 0 && monthIndex < entry.charsByMonth.length) {
     entry.charsByMonth[monthIndex] += length;
   }
@@ -53,7 +63,11 @@ export function bumpYearAgg(ts, role, contentLen, imagesInMsg = 0) {
   if (imagesInMsg && Number.isFinite(imagesInMsg)) {
     entry.images += imagesInMsg;
   }
-  entry.activeDays.add(dayKey);
+  
+  // 只有有效的日期才计入活跃天数
+  if (dayKey) {
+    entry.activeDays.add(dayKey);
+  }
 }
 
 export function finalizeYearAgg() {
