@@ -214,6 +214,22 @@
     td { padding: 12px 8px; border-bottom: 1px solid var(--border); }
     td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     tr:last-child td { border-bottom: none; }
+    tbody tr:nth-child(even) {
+      background-color: rgba(0,0,0, 0.03);
+    }
+
+    /* 鼠标悬停高亮：这一行变色，让眼睛聚焦 */
+    tbody tr:hover {
+      background-color: var(--card-highlight); /* 用主题里的深色块 */
+      color: var(--text-highlight); /* 文字反白 */
+      cursor: default;
+    }
+
+    /* 悬停时，里面原本淡色的文字也要变亮 */
+    tbody tr:hover .muted {
+      color: rgba(255,255,255, 0.7);
+      opacity: 1;
+    }
 
     /* 词云 */
     .cloud {
@@ -264,6 +280,22 @@
     .printing .card { box-shadow: none; border: 1px solid var(--border); }
     .visually-hidden { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
     .row.tight { gap: 8px; }
+
+    ::-webkit-scrollbar {
+      width: 8px; /* 稍微细一点 */
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: var(--bg); /* 轨道颜色和背景融合 */
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--border); /* 滑块颜色用边框色，低调 */
+      border-radius: 4px;
+      border: 2px solid var(--bg); /* 加个边框让滑块变细，像悬浮一样 */
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--primary); /* 鼠标放上去变亮，提示交互 */
+    }
   </style>
 </head>
 <body>
