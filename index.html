@@ -7,186 +7,338 @@
   <meta name="color-scheme" content="light"/>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
   <style>
-    /* ---- 主题与颜色变量（集中管理） ----
-       每套主题需给出：主色、强调色、背景、文本、卡片底、词云默认色 */
-    :root{
-      --radius:16px; --pad:16px; --gap:16px;
-      --shadow:0 6px 18px rgba(0,0,0,.06);
-      --border-soft:1px solid rgba(0,0,0,.10);
-
-      /* Fable */
-      --primary:#e3a9c4;      /* 主色：按钮/标题线/默认词云色 */
-      --accent:#97b9d0;        /* 强调色：进度条渐变右侧、可选词云色 */
-      --bg:#9db7dd;             /* 页面背景 */
-      --text:#0A0F14;           /* 正文文本 */
-      --card-bg:#f4f4f4;        /* 卡片底色（无边框）*/
-    }
-    html[data-theme="Galaxy"]{
-      --primary:#796aa7; --accent:#e9a4ae; --bg:#f2f1f8; --text:#0A0F14; --card-bg:#e2d8e9; 
-    }
-    html[data-theme="Ferry"]{
-      --primary:#699eb3; --accent:#a1ccdd; --bg:#f4d0e2; --text:#0A0F14; --card-bg:#f8edf3; 
-    }
-    html[data-theme="Ember"]{
-      --primary:#df8164; --accent:#e5c481; --bg:#abc799; --text:#0A0F14; --card-bg:#fbf9ec; 
+    /* ---- Syzygy's Retro Overhaul ---- */
+    :root {
+      --gap: 16px;
+      /* 90s Bevel System */
+      --bevel-light: #ffffff;
+      --bevel-dark: #000000;
+      --bevel-gray: #808080;
+      --bevel-face: #c0c0c0;
+      
+      /* Default Theme (Win95 Style) - Maps to "Fable" */
+      --bg: #008080;           /* Desktop Teal */
+      --text: #000000;
+      --card-bg: #c0c0c0;
+      --primary: #000080;      /* Active Title Bar Blue */
+      --accent: #ffff00;       /* Highlight */
+      --font-main: "MS Sans Serif", "Segoe UI", sans-serif;
+      --font-mono: "Courier New", monospace;
     }
 
-    /* ---- 基础样式 ---- */
-    *{box-sizing:border-box}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:var(--text);background:var(--bg);}
-    .wrap{max-width:980px;margin:0 auto;padding:24px;}
-    .stack{display:flex;flex-direction:column;gap:var(--gap);}
-    .row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;}
-    .h1{font-size:28px;font-weight:700;margin:0 0 8px;}
-    .muted{opacity:.65;font-size:14px;}
-    .section-title{font-weight:700;margin:0 0 8px;border-left:4px solid var(--primary);padding-left:8px;}
-    .card{background:var(--card-bg);border:none;border-radius:var(--radius);box-shadow:var(--shadow);padding:var(--pad);}
-    #results>.card{margin-bottom:16px;}
-    input[type="text"], textarea, select{
-      width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(0,0,0,.12);background:#fff;color:var(--text);
+    /* Theme Overrides - Keeping ID mapping compatible with JS */
+    html[data-theme="Galaxy"] { /* Vaporwave / Macintosh */
+      --bg: #ff7eb6;
+      --card-bg: #e6e6fa;
+      --text: #2a2a2a;
+      --primary: #8a2be2;
+      --accent: #00ffff;
     }
-    .btn{appearance:none;border:0;border-radius:10px;padding:6px 10px;background:var(--primary);color:#fff;font-weight:600;cursor:pointer}
-    .btn.secondary{background:#fff;color:var(--text);border:1px solid rgba(0,0,0,.12)}
-    .pill{display:inline-flex;gap:6px;align-items:center;}
-    .small{font-size:12px;opacity:.75}
-    .kpi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
-    .kpi .box{background:var(--card-bg);border:none;border-radius:12px;padding:12px;text-align:center;box-shadow:0 1px 6px rgba(0,0,0,.05)}
-    .kpi .n{font-size:18px;font-weight:800}
+    html[data-theme="Ferry"] { /* Matrix / Terminal */
+      --bg: #000000;
+      --card-bg: #0c0c0c;
+      --text: #00ff00;
+      --primary: #008000;
+      --accent: #003300;
+      --bevel-light: #004400;
+      --bevel-dark: #00ff00;
+      --bevel-face: #001100;
+      --bevel-gray: #003300;
+    }
+    html[data-theme="Ember"] { /* Hotdog Stand / High Contrast */
+      --bg: #ffff00;
+      --card-bg: #ff0000;
+      --text: #ffffff;
+      --primary: #000000;
+      --accent: #ffff00;
+      --bevel-face: #ff0000;
+      --bevel-light: #ffcccc;
+      --bevel-dark: #660000;
+    }
 
-    .cloud{min-height:220px;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:12px}
-    .cloud span{display:inline-block;padding:2px 4px;border-radius:6px;color:var(--primary);font-weight:800}
-    .cloud span[data-w]{opacity: calc(.65 + (.35 * var(--w,1)));}
+    /* ---- 基础重置与布局 ---- */
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font-main);
+      color: var(--text);
+      background: var(--bg);
+      /* Dotted pattern overlay for texture */
+      background-image: radial-gradient(var(--text) 1px, transparent 1px);
+      background-size: 20px 20px;
+      background-opacity: 0.1;
+      padding-bottom: 40px;
+    }
+    .wrap { max-width: 900px; margin: 0 auto; padding: 20px; }
+    .stack { display: flex; flex-direction: column; gap: var(--gap); }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+    
+    /* ---- Retro Component: Card / Window ---- */
+    .card {
+      background: var(--card-bg);
+      border: 2px solid;
+      border-top-color: var(--bevel-light);
+      border-left-color: var(--bevel-light);
+      border-right-color: var(--bevel-dark);
+      border-bottom-color: var(--bevel-dark);
+      box-shadow: 1px 1px 0 #000;
+      padding: 16px;
+      position: relative;
+    }
+    
+    /* Fake Title Bar for Sections */
+    .section-title {
+      background: var(--primary);
+      color: #fff;
+      font-family: var(--font-main);
+      font-weight: bold;
+      padding: 4px 8px;
+      margin: -18px -18px 16px -18px; /* Stick to edges */
+      border: 2px solid var(--card-bg);
+      display: block;
+      letter-spacing: 1px;
+    }
+    
+    /* Typography */
+    .h1 {
+      font-family: var(--font-mono);
+      font-size: 24px;
+      font-weight: 700;
+      margin: 0 0 8px;
+      text-transform: uppercase;
+      text-shadow: 1px 1px 0 var(--bevel-light);
+    }
+    .muted { opacity: 0.7; }
+    .small { font-size: 12px; }
 
-    .text-toggle{display:flex;gap:8px;align-items:center;}
-    .text-toggle button{border:0;background:none;padding:0;font:inherit;color:var(--text);opacity:.65;cursor:pointer;}
-    .text-toggle button:hover,.text-toggle button:focus-visible{opacity:1;text-decoration:underline;}
-    .text-toggle button.active{font-weight:600;opacity:1;}
-    .text-toggle span{opacity:.4;}
+    /* ---- Retro Inputs ---- */
+    input[type="text"], textarea, select {
+      width: 100%;
+      padding: 6px;
+      border: 2px solid;
+      border-top-color: var(--bevel-dark);
+      border-left-color: var(--bevel-dark);
+      border-right-color: var(--bevel-light);
+      border-bottom-color: var(--bevel-light);
+      background: #fff;
+      color: #000;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      border-radius: 0;
+      outline: none;
+    }
+    input:focus { background: #ffffe0; }
 
-    .table-scroll{overflow:auto;}
-    table.data-table{width:100%;border-collapse:collapse;min-width:320px;}
-    table.data-table thead th{padding:8px 12px;text-align:left;font-weight:600;font-size:13px;border-bottom:1px solid rgba(0,0,0,.12);}
-    table.data-table tbody td{padding:10px 12px;font-size:14px;vertical-align:top;}
-    table.data-table tbody tr:nth-child(even){background:rgba(0,0,0,.04);}
-    table.data-table td.num, table.data-table th.num{text-align:right;}
-    table.data-table td.streak{white-space:nowrap;}
-    table.data-table td .small{font-size:12px;}
+    /* ---- Retro Buttons ---- */
+    .btn {
+      appearance: none;
+      border: 2px solid;
+      border-top-color: var(--bevel-light);
+      border-left-color: var(--bevel-light);
+      border-right-color: var(--bevel-dark);
+      border-bottom-color: var(--bevel-dark);
+      background: var(--card-bg);
+      color: var(--text);
+      padding: 4px 12px;
+      font-family: var(--font-main);
+      font-weight: bold;
+      cursor: pointer;
+      text-transform: uppercase;
+      font-size: 12px;
+      box-shadow: 1px 1px 0 #000;
+    }
+    .btn:active {
+      border-top-color: var(--bevel-dark);
+      border-left-color: var(--bevel-dark);
+      border-right-color: var(--bevel-light);
+      border-bottom-color: var(--bevel-light);
+      transform: translate(1px, 1px);
+      box-shadow: none;
+    }
+    .btn.secondary { opacity: 0.9; }
 
-    .yr-table{width:100%;border-collapse:separate;border-spacing:0 6px;}
-    .yr-table th,.yr-table td{padding:8px 10px;white-space:nowrap;}
-    .yr-table .full{display:inline;}
-    .yr-table .abbr{display:none;}
+    /* ---- Functional Elements ---- */
+    .pill { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+    /* Checkbox hack to look retro */
+    input[type="checkbox"] {
+      appearance: none;
+      width: 16px; height: 16px;
+      border: 2px solid;
+      border-top-color: var(--bevel-dark);
+      border-left-color: var(--bevel-dark);
+      border-right-color: var(--bevel-light);
+      border-bottom-color: var(--bevel-light);
+      background: #fff;
+      position: relative;
+      vertical-align: middle;
+      cursor: pointer;
+    }
+    input[type="checkbox"]:checked::after {
+      content: '✓';
+      position: absolute;
+      color: #000;
+      font-weight: bold;
+      font-size: 14px;
+      top: -4px; left: 1px;
+    }
 
-@media (max-width:480px){
-  .yr-table.responsive{display:flex;flex-direction:column;gap:12px;}
-  .yr-table.responsive thead{display:none;}
-  .yr-table.responsive tr{
-    display:block;
-    background:var(--card-bg);
-    border-radius:12px;
-    padding:12px;
-    box-shadow:var(--shadow);
-  }
-  .yr-table.responsive td{
-    display:flex;
-    justify-content:space-between;
-    padding:6px 0;
-    border-bottom:1px solid rgba(0,0,0,.05);
-    font-size:13px;
-  }
-  .yr-table.responsive td:last-child{border-bottom:none;}
-  .yr-table.responsive td::before{
-    content:attr(data-label);
-    opacity:.65;
-    font-weight:600;
-  }
-  .yr-table.responsive td.num{text-align:right;font-weight:500;}
-}
+    /* KPI Boxes */
+    .kpi { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .kpi .box {
+      border: 2px solid;
+      border-top-color: var(--bevel-dark);
+      border-left-color: var(--bevel-dark);
+      border-right-color: var(--bevel-light);
+      border-bottom-color: var(--bevel-light);
+      background: #fff;
+      padding: 8px;
+      text-align: center;
+    }
+    .kpi .n { font-family: var(--font-mono); font-size: 16px; font-weight: 700; }
 
-    /* 无障碍隐藏原生 file 输入，仅保留 label 按钮触发 */
-.visually-hidden{
-  position:absolute; width:1px; height:1px; padding:0; margin:-1px;
-  overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
-}
-/* 紧凑行间距 */
-.row.tight{ gap:8px; }
+    /* Word Cloud */
+    .cloud {
+      min-height: 220px;
+      display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px;
+      background: #fff;
+      border: 2px solid;
+      border-top-color: var(--bevel-dark);
+      border-left-color: var(--bevel-dark);
+      border-right-color: var(--bevel-light);
+      border-bottom-color: var(--bevel-light);
+      padding: 12px;
+    }
+    .cloud span {
+      font-family: var(--font-mono);
+      color: var(--primary);
+      text-transform: uppercase;
+    }
 
-    /* 进度条 */
-    .progress{height:10px;background:rgba(0,0,0,.06);border-radius:999px;overflow:hidden}
-    .bar{height:100%;width:0;background:linear-gradient(90deg,var(--primary),var(--accent));transition:width .3s}
+    /* Toggles */
+    .text-toggle { display: flex; gap: 8px; align-items: center; margin-bottom: 8px;}
+    .text-toggle button {
+      border: none; background: none; 
+      font-family: var(--font-mono); 
+      cursor: pointer; color: var(--text);
+      text-decoration: underline;
+    }
+    .text-toggle button.active { font-weight: bold; background: var(--primary); color: #fff; text-decoration: none; padding: 0 4px; }
 
-    /* 模型占比 */
-    .model-row{display:flex;align-items:center;gap:8px;margin:6px 0;}
-    .model-row .label{flex:1;font-weight:700;min-width:120px;}
-    .model-row .bar{transition:width .4s ease-in-out;}
-    .model-row .share{width:72px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;}
-    .model-row .value{width:120px;text-align:right;font-size:12px;opacity:.75;}
-    .model-rows .progress{height:8px;}
-    .models-meta{font-size:12px;opacity:.75;margin-top:4px;}
-    .model-trend{display:flex;align-items:flex-end;gap:6px;margin-top:12px;}
-    .model-trend .month{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;}
-    .model-trend .month .bar{width:100%;min-height:4px;border-radius:6px;background:linear-gradient(180deg,var(--accent),var(--primary));}
-    .model-trend .month span{font-size:11px;opacity:.7;}
+    /* Tables */
+    .table-scroll { 
+      overflow: auto; 
+      border: 2px solid;
+      border-top-color: var(--bevel-dark);
+      border-left-color: var(--bevel-dark);
+      border-right-color: var(--bevel-light);
+      border-bottom-color: var(--bevel-light);
+      background: #fff;
+    }
+    table.data-table, table.yr-table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 12px; color: #000;}
+    th { 
+      background: var(--card-bg); 
+      border-bottom: 2px solid #000; 
+      text-align: left; padding: 6px; 
+      font-weight: bold;
+    }
+    td { padding: 6px; border-bottom: 1px dotted #ccc; }
+    td.num, th.num { text-align: right; }
+    
+    /* Progress Bars - Chunky */
+    .progress {
+      height: 14px;
+      background: #fff;
+      border: 2px solid;
+      border-top-color: var(--bevel-dark);
+      border-left-color: var(--bevel-dark);
+      border-right-color: var(--bevel-light);
+      border-bottom-color: var(--bevel-light);
+      padding: 1px;
+    }
+    .bar {
+      height: 100%; width: 0;
+      background: var(--primary);
+      /* Stripes pattern */
+      background-image: linear-gradient(45deg,rgba(255,255,255,.15) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.15) 50%,rgba(255,255,255,.15) 75%,transparent 75%,transparent);
+      background-size: 10px 10px;
+    }
 
-    /* 页脚（粘滞） */
-    .footer{position:sticky;bottom:0;background:linear-gradient(to top, rgba(246,251,253,.95), rgba(246,251,253,0));padding-top:8px}
+    /* Footer */
+    .footer {
+      position: sticky; bottom: 0;
+      background: var(--card-bg);
+      border-top: 2px solid var(--bevel-light);
+      padding: 8px;
+      z-index: 10;
+    }
+    
+    /* Printing/Export Mode */
+    .printing .card { box-shadow: none; border: 2px solid #000; }
+    .printing .footer { position: static; }
 
-    /* —— 截图护栏 —— */
-    #results{overflow:visible;}
-    .printing #results{overflow:visible;}
-    .printing .footer{position:static;box-shadow:none;}
-    .printing .card{box-shadow:none;border:none;background:var(--card-bg);}
+    /* Responsive Table */
+    @media (max-width:480px){
+      .yr-table.responsive tr {
+        border: 1px solid #000; margin-bottom: 8px; background: #fff;
+      }
+      .yr-table.responsive td { border-bottom: 1px solid #eee; display: flex; justify-content: space-between; }
+    }
+    
+    /* Utility */
+    .visually-hidden { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
+    .row.tight { gap: 8px; }
+    .model-row .bar { background: var(--primary); }
   </style>
 </head>
 <body>
   <div class="wrap stack">
-    <!-- 顶部：输入与外观 -->
     <section class="card stack" id="top">
+      <div class="section-title">SYSTEM_CONFIG.EXE</div>
       <header>
-        <h1 class="h1">Echo：<span id="title-name">My GPT</span></h1>
-        <p class="muted">A Year by the Numbers</p>
+        <h1 class="h1">Echo: <span id="title-name">My GPT</span></h1>
+        <p class="muted">> A Year by the Numbers_</p>
       </header>
 
       <div class="stack">
-<div class="row tight">
-  <input type="file" id="file" accept=".json,application/json" class="visually-hidden" />
-  <label for="file" class="btn secondary" id="btn-file">选择文件</label>
-  <span id="file-name" class="small muted"></span>
-  <button class="btn " id="btn-parse">开始解析</button>
-  <button class="btn secondary " id="btn-cancel">中断/重置</button>
-</div>
+        <div class="row tight">
+          <input type="file" id="file" accept=".json,application/json" class="visually-hidden" />
+          <label for="file" class="btn secondary" id="btn-file">[ LOAD FILE ]</label>
+          <span id="file-name" class="small muted">NO_FILE_SELECTED</span>
+          <button class="btn" id="btn-parse">RUN PARSER</button>
+          <button class="btn secondary" id="btn-cancel">ABORT</button>
+        </div>
 
         <div class="row">
           <div style="flex:2;min-width:260px">
-            <label class="small">标题中“GPT”的替换词</label>
-            <input id="title-input" type="text" placeholder="例如：你的GPT的名字&你自己的名字"/>
+            <label class="small">SYSTEM_NAME:</label>
+            <input id="title-input" type="text" placeholder="Enter custom name..."/>
           </div>
           <div style="flex:1;min-width:180px">
-            <label class="small">主题选择</label>
+            <label class="small">COLOR_SCHEME:</label>
             <select id="theme">
-              <option value="Fable">Fable</option>
-              <option value="Galaxy">Galaxy</option>
-              <option value="Ferry">Ferry</option>
-              <option value="Ember">Ember</option>
+              <option value="Fable">Windows 95 (Teal)</option>
+              <option value="Galaxy">Vaporwave (Pink)</option>
+              <option value="Ferry">Terminal (Green)</option>
+              <option value="Ember">Hotdog (Red/Yel)</option>
             </select>
           </div>
         </div>
 
         <div class="row">
-          <label class="pill"><input type="checkbox" id="mask"/> <span>脱敏开关</span></label>
+          <label class="pill"><input type="checkbox" id="mask"/> <span>ANONYMIZE_DATA</span></label>
         </div>
 
         <div class="stack">
           <div>
-            <span class="small">解析进度</span>
+            <span class="small">PARSING_STATUS:</span>
             <div class="progress"><div class="bar" id="p-parse"></div></div>
           </div>
           <div>
-            <span class="small">分片入库</span>
+            <span class="small">DB_SHARDING:</span>
             <div class="progress"><div class="bar" id="p-shard"></div></div>
           </div>
           <div>
-            <span class="small">统计计算</span>
+            <span class="small">CALCULATING_STATS:</span>
             <div class="small muted" id="stats-phase-label"></div>
             <div class="progress"><div class="bar" id="p-stat"></div></div>
           </div>
@@ -194,66 +346,61 @@
       </div>
     </section>
 
-    <!-- 中部：结果区 -->
     <main class="stack" id="results">
-      <!-- 年度概览 -->
       <section class="card stack" id="card-yearly">
-        <div class="section-title">年度概览</div>
+        <div class="section-title">YEARLY_LOG.TXT</div>
         <div class="table-scroll">
           <table class="yr-table" id="yearly-table">
             <thead>
               <tr>
-                <th><span class="full">年份</span><span class="abbr">年份</span></th>
-                <th><span class="full">消息总条数</span><span class="abbr">消息总条数</span></th>
-                <th><span class="full">总字数</span><span class="abbr">总字数</span></th>
-                <th><span class="full">总图片数</span><span class="abbr">总图片数</span></th>
-                <th><span class="full">日均字数</span><span class="abbr">日均字数</span></th>
-                <th><span class="full">最活跃月</span><span class="abbr">最活跃月</span></th>
-                <th><span class="full">GPT平均字数</span><span class="abbr">GPT平均字数</span></th>
-                <th><span class="full">连续活跃</span><span class="abbr">连续活跃</span></th>
+                <th><span class="full">YEAR</span><span class="abbr">YR</span></th>
+                <th><span class="full">TOTAL_MSGS</span><span class="abbr">MSG</span></th>
+                <th><span class="full">TOTAL_CHARS</span><span class="abbr">CHR</span></th>
+                <th><span class="full">IMAGES</span><span class="abbr">IMG</span></th>
+                <th><span class="full">AVG_DAILY</span><span class="abbr">AVG</span></th>
+                <th><span class="full">PEAK_MONTH</span><span class="abbr">PEAK</span></th>
+                <th><span class="full">GPT_AVG_LEN</span><span class="abbr">GPT</span></th>
+                <th><span class="full">STREAK</span><span class="abbr">STR</span></th>
               </tr>
             </thead>
             <tbody>
-              <tr><td colspan="8" class="muted">暂无统计</td></tr>
+              <tr><td colspan="8" class="muted">WAITING FOR INPUT...</td></tr>
             </tbody>
           </table>
         </div>
       </section>
 
-      <!-- 词云 -->
       <section class="card stack" id="card-cloud">
-        <div class="section-title">Top10 词云</div>
-        <div class="text-toggle small" id="cloud-toggle" role="group" aria-label="词云视图切换">
-          <button type="button" data-mode="phrases" class="active" aria-pressed="true">统计字词</button>
+        <div class="section-title">MEMORY_DUMP (TOP 10)</div>
+        <div class="text-toggle small" id="cloud-toggle" role="group" aria-label="视图切换">
+          <button type="button" data-mode="phrases" class="active" aria-pressed="true">[PHRASES]</button>
           <span>/</span>
-          <button type="button" data-mode="words" aria-pressed="false">仅限文字</button>
+          <button type="button" data-mode="words" aria-pressed="false">[WORDS]</button>
         </div>
         <div class="cloud" id="cloud">
-          <span class="muted">暂无统计</span>
+          <span class="muted">NO DATA</span>
         </div>
       </section>
 
-      <!-- 模型占比 -->
       <section class="card stack" id="card-models">
-        <div class="section-title">模型使用占比</div>
-        <p class="small muted">统计助手消息占比。工具调用（web、python、browser等）单独归类为Tools。</p>
+        <div class="section-title">MODEL_USAGE_STATS</div>
+        <p class="small muted">> Analysis of Assistant responses (Tools excluded).</p>
         <div class="row small" style="align-items:center; gap:8px;">
-          <label class="muted" for="window">统计年份：</label>
+          <label class="muted" for="window">TIMEFRAME:</label>
           <select id="window">
-            <option value="all">全部时间</option>
+            <option value="all">ALL_TIME</option>
           </select>
         </div>
         <div id="models-chart" class="table-scroll">
-          <span class="muted">暂无模型统计</span>
+          <span class="muted">WAITING...</span>
         </div>
       </section>
     </main>
 
-    <!-- 底部：轻导出 -->
     <footer class="footer">
-      <div class="card row" style="justify-content:space-between;align-items:center">
-        <span class="small">当前主题与标题会同步用于导出长图。</span>
-        <button class="btn" id="btn-save">保存为图片</button>
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <span class="small muted">READY.</span>
+        <button class="btn" id="btn-save">EXPORT_IMAGE.PNG</button>
       </div>
     </footer>
   </div>
@@ -265,6 +412,7 @@
     import { mergePartials, exactRecount, scoreCandidates, buildTopViews, reconcileTopViews } from './src/stats/merge.js';
     import { cutoff90Days, cutoff365Days, filterMessagesByWindow, computeModelShare, resetModelAgg, getModelShare, bumpModelBucket } from './src/stats/models.js';
     import { finalizeYearAgg, computeYearlyMetrics } from './src/stats/timeline.js';
+    
     // —— 主题下拉 —— //
     const themeSel = document.getElementById('theme');
     themeSel.addEventListener('change', ()=> {
@@ -573,84 +721,83 @@
 
     updateCloudToggleButtons(statsState.cloudMode);
 
-resetModelShareState();
+    resetModelShareState();
 
-// 动态填充年份选项
-function populateYearOptions() {
-  if (!modelWindowSelect) return;
-  const years = Object.keys(yearlyState.data || {})
-    .map(y => Number(y))
-    .filter(y => !isNaN(y))
-    .sort((a, b) => b - a); // 降序排列
-  
-  const currentValue = modelWindowSelect.value;
-  modelWindowSelect.innerHTML = '<option value="all">全部时间</option>';
-  
-  years.forEach(year => {
-    const option = document.createElement('option');
-    option.value = String(year);
-    option.textContent = `${year}年`;
-    modelWindowSelect.appendChild(option);
-  });
-  
-  modelWindowSelect.value = 'all';
-}
-
-if (modelWindowSelect) {
-  modelsState.window = modelWindowSelect.value || 'all';
-  
-  modelWindowSelect.addEventListener('change', () => {
-    const next = modelWindowSelect.value;
-    if (modelsState.window === next) return;
-    modelsState.window = next;
-    if (modelsState.messages.length && !modelsState.loading) {
-      recomputeModelShareView();
-    } else {
-      renderModelShare();
+    // 动态填充年份选项
+    function populateYearOptions() {
+      if (!modelWindowSelect) return;
+      const years = Object.keys(yearlyState.data || {})
+        .map(y => Number(y))
+        .filter(y => !isNaN(y))
+        .sort((a, b) => b - a); // 降序排列
+      
+      const currentValue = modelWindowSelect.value;
+      modelWindowSelect.innerHTML = '<option value="all">ALL_TIME</option>';
+      
+      years.forEach(year => {
+        const option = document.createElement('option');
+        option.value = String(year);
+        option.textContent = `${year}`;
+        modelWindowSelect.appendChild(option);
+      });
+      
+      modelWindowSelect.value = 'all';
     }
-  });
-}
+
+    if (modelWindowSelect) {
+      modelsState.window = modelWindowSelect.value || 'all';
+      
+      modelWindowSelect.addEventListener('change', () => {
+        const next = modelWindowSelect.value;
+        if (modelsState.window === next) return;
+        modelsState.window = next;
+        if (modelsState.messages.length && !modelsState.loading) {
+          recomputeModelShareView();
+        } else {
+          renderModelShare();
+        }
+      });
+    }
 
     renderModelShare();
-
     resetProgressBars();
 
     fileInput.addEventListener('change', () => {
       const fileName = fileInput.files?.[0]?.name || '';
-      fileNameSpan.textContent = fileName ? `已选择：${fileName}` : '';
+      fileNameSpan.textContent = fileName ? `FILE: ${fileName}` : '';
     });
-parseBtn.addEventListener('click', async ()=>{
-  if(currentRunPromise){ return; }
-  if(!fileInput.files?.[0]){ alert('请选择 JSON 文件'); return; }
+    parseBtn.addEventListener('click', async ()=>{
+      if(currentRunPromise){ return; }
+      if(!fileInput.files?.[0]){ alert('ERROR: INSERT JSON DISK'); return; }
 
-  cancelRequested = false;
-  
-  // 每次导入前先清空旧数据
-  try {
-    await clearAll();
-  } catch (err) {
-    console.error('清空旧数据失败', err);
-  }
-  
-  resetProgressBars();
-  state.mask = !!maskInput?.checked;
-  statsState.counts.clear();
-  statsState.sortedCandidates = [];
-  statsState.candidates = [];
-  statsState.candidatesByN = { 1: [], 2: [], 3: [] };
-  statsState.totalTokens = 0;
-  statsState.recountTimeMs = 0;
-  statsState.top10 = [];
-  statsState.views = { phrases: [], words: [] };
-  refreshCloud();
-  resetModelShareState();
-  renderModelShare();
-  yearlyState.data = {};
-  renderYearlyOverview({});
-  parseBtn.disabled = true;
-  parseBtn.textContent = '解析中…';
-  cancelBtn.disabled = false;
-  
+      cancelRequested = false;
+      
+      // 每次导入前先清空旧数据
+      try {
+        await clearAll();
+      } catch (err) {
+        console.error('清空旧数据失败', err);
+      }
+      
+      resetProgressBars();
+      state.mask = !!maskInput?.checked;
+      statsState.counts.clear();
+      statsState.sortedCandidates = [];
+      statsState.candidates = [];
+      statsState.candidatesByN = { 1: [], 2: [], 3: [] };
+      statsState.totalTokens = 0;
+      statsState.recountTimeMs = 0;
+      statsState.top10 = [];
+      statsState.views = { phrases: [], words: [] };
+      refreshCloud();
+      resetModelShareState();
+      renderModelShare();
+      yearlyState.data = {};
+      renderYearlyOverview({});
+      parseBtn.disabled = true;
+      parseBtn.textContent = 'RUNNING...';
+      cancelBtn.disabled = false;
+      
 
       const file = fileInput.files[0];
       const assistName = (document.getElementById('assist-filter')?.value || '').trim();
@@ -684,7 +831,7 @@ parseBtn.addEventListener('click', async ()=>{
           }
         } catch (err) {
           if (err?.name !== 'AbortError') {
-            const label = err?.__stats ? '统计计算失败' : '解析过程中出错';
+            const label = err?.__stats ? 'STATS_FAIL' : 'PARSE_FAIL';
             console.error(label, err);
           }
         } finally {
@@ -703,7 +850,7 @@ parseBtn.addEventListener('click', async ()=>{
         await run;
       } catch (err) {
         if (err?.name !== 'AbortError') {
-          console.error('解析结束时出错', err);
+          console.error('CRITICAL_ERROR', err);
         }
       }
     });
@@ -717,7 +864,7 @@ parseBtn.addEventListener('click', async ()=>{
         await currentRunPromise;
       } catch (err) {
         if (err?.name !== 'AbortError') {
-          console.error('取消过程中出错', err);
+          console.error('CANCEL_ERROR', err);
         }
       } finally {
         currentRunPromise = null;
@@ -727,7 +874,7 @@ parseBtn.addEventListener('click', async ()=>{
       try {
         await clearAll();
       } catch (err) {
-        console.error('清空分片失败', err);
+        console.error('DB_CLEAR_FAIL', err);
       }
 
       statsState.counts.clear();
@@ -790,14 +937,14 @@ parseBtn.addEventListener('click', async ()=>{
       };
 
       const columnLabels = {
-        year: '年份',
-        messages: '消息总条数',
-        chars: '总字数',
-        images: '总图片数',
-        avgPerDay: '日均字数',
-        topMonth: '最活跃月',
-        avgAssistant: 'GPT平均字数',
-        streaks: '连续活跃',
+        year: 'YR',
+        messages: 'MSG',
+        chars: 'CHR',
+        images: 'IMG',
+        avgPerDay: 'AVG',
+        topMonth: 'PEAK',
+        avgAssistant: 'GPT',
+        streaks: 'STR',
       };
 
       const resolveActiveDays = (days) => {
@@ -864,7 +1011,7 @@ parseBtn.addEventListener('click', async ()=>{
         const cell = document.createElement('td');
         cell.colSpan = 8;
         cell.className = 'muted';
-        cell.textContent = '暂无统计';
+        cell.textContent = 'NO DATA';
         row.appendChild(cell);
         tbody.appendChild(row);
         updateYearlyTableResponsive();
@@ -872,7 +1019,7 @@ parseBtn.addEventListener('click', async ()=>{
       }
 
       const derived = computeYearlyMetrics(summary);
-      const monthLabels = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
+      const monthLabels = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
       entries.forEach(([year, value]) => {
         const entry = value || {};
@@ -914,7 +1061,7 @@ parseBtn.addEventListener('click', async ()=>{
         if (activeDayCount > 0) {
           const sub = document.createElement('div');
           sub.className = 'small muted';
-          sub.textContent = `活跃天数 ${formatNumber(activeDayCount)}`;
+          sub.textContent = `ACT: ${formatNumber(activeDayCount)}d`;
           yearCell.appendChild(sub);
         }
         row.appendChild(yearCell);
@@ -926,7 +1073,7 @@ parseBtn.addEventListener('click', async ()=>{
         if (Number.isFinite(assistantMsgs) && assistantMsgs > 0) {
           const sub = document.createElement('div');
           sub.className = 'small muted';
-          sub.textContent = `GPT ${formatNumber(assistantMsgs)}`;
+          sub.textContent = `GPT: ${formatNumber(assistantMsgs)}`;
           msgsCell.appendChild(sub);
         }
         row.appendChild(msgsCell);
@@ -938,7 +1085,7 @@ parseBtn.addEventListener('click', async ()=>{
         if (Number.isFinite(assistantChars) && assistantChars > 0) {
           const sub = document.createElement('div');
           sub.className = 'small muted';
-          sub.textContent = `GPT ${formatNumber(assistantChars)}`;
+          sub.textContent = `GPT: ${formatNumber(assistantChars)}`;
           charsCell.appendChild(sub);
         }
         row.appendChild(charsCell);
@@ -995,7 +1142,7 @@ parseBtn.addEventListener('click', async ()=>{
         if (activeDayCount > 0) {
           const sub = document.createElement('div');
           sub.className = 'small muted';
-          sub.textContent = `活跃天数 ${formatNumber(activeDayCount)}`;
+          sub.textContent = `ACT: ${formatNumber(activeDayCount)}`;
           streakCell.appendChild(sub);
         }
         row.appendChild(streakCell);
@@ -1028,139 +1175,132 @@ parseBtn.addEventListener('click', async ()=>{
     }
 
     function resolveWindowLabel(windowOpt) {
-        if (windowOpt === 'all') return '全部时间';
+        if (windowOpt === 'all') return 'ALL_TIME';
         const year = Number(windowOpt);
-        if (!isNaN(year)) return `${year}年`;
+        if (!isNaN(year)) return `${year}`;
         return windowOpt;
     }
     
-  function renderModelShare() {
-  if (!modelsChartHost) return;
-  modelsChartHost.innerHTML = '';
+    function renderModelShare() {
+      if (!modelsChartHost) return;
+      modelsChartHost.innerHTML = '';
 
-  if (modelsState.loading) {
-    const loading = document.createElement('span');
-    loading.className = 'muted';
-    loading.textContent = '模型占比计算中…';
-    modelsChartHost.appendChild(loading);
-    return;
-  }
+      if (modelsState.loading) {
+        const loading = document.createElement('span');
+        loading.className = 'muted';
+        loading.textContent = 'COMPUTING...';
+        modelsChartHost.appendChild(loading);
+        return;
+      }
 
-  if (modelsState.error) {
-    const error = document.createElement('span');
-    error.className = 'muted';
-    error.textContent = modelsState.error;
-    modelsChartHost.appendChild(error);
-    return;
-  }
+      if (modelsState.error) {
+        const error = document.createElement('span');
+        error.className = 'muted';
+        error.textContent = modelsState.error;
+        modelsChartHost.appendChild(error);
+        return;
+      }
 
-  const rows = Array.isArray(modelsState?.share?.rows) ? modelsState.share.rows : [];
-  const total = Number(modelsState?.share?.total) || 0;
+      const rows = Array.isArray(modelsState?.share?.rows) ? modelsState.share.rows : [];
+      const total = Number(modelsState?.share?.total) || 0;
 
-  if (!rows.length || total <= 0) {
-    const placeholder = document.createElement('span');
-    placeholder.className = 'muted';
-    placeholder.textContent = '暂无模型统计';
-    modelsChartHost.appendChild(placeholder);
-    return;
-  }
+      if (!rows.length || total <= 0) {
+        const placeholder = document.createElement('span');
+        placeholder.className = 'muted';
+        placeholder.textContent = 'NO_MODEL_STATS';
+        modelsChartHost.appendChild(placeholder);
+        return;
+      }
 
-  const table = document.createElement('table');
-  table.className = 'data-table';
+      const table = document.createElement('table');
+      table.className = 'data-table';
 
-  const thead = document.createElement('thead');
-  const headRow = document.createElement('tr');
-  ['Model', 'Messages', 'Share'].forEach((label, idx) => {
-    const th = document.createElement('th');
-    th.textContent = label;
-    if (idx > 0) th.className = 'num';
-    headRow.appendChild(th);
-  });
-  thead.appendChild(headRow);
-  table.appendChild(thead);
-
-  const tbody = document.createElement('tbody');
-  let needsDivider = true;
-  let dataRowIndex = 0; // ← 只计数真正的数据行
-  
-  rows.forEach((entry) => {
-    // 检测到 Tools 或 Unknown 时，插入分隔线
-    if (needsDivider && (entry.label === 'Tools' || entry.label === 'Unknown')) {
-      const dividerRow = document.createElement('tr');
-      dividerRow.style.background = 'transparent'; // ← 分隔线不参与斑马纹
-      const dividerCell = document.createElement('td');
-      dividerCell.colSpan = 3;
-      dividerCell.style.cssText = 'padding:0; height:1px; background:rgba(0,0,0,.12);';
-      dividerRow.appendChild(dividerCell);
-      tbody.appendChild(dividerRow);
-      needsDivider = false;
-    }
-    
-    const tr = document.createElement('tr');
-    
-    // ← 手动设置斑马纹背景色
-    if (dataRowIndex % 2 === 0) {
-    tr.style.background = 'transparent'; // 偶数行：无底色
-  } else {
-    tr.style.background = 'rgba(0,0,0,.04)'; // 奇数行：深底色
-  }
-  dataRowIndex++;
-
-  const modelCell = document.createElement('td');
-  modelCell.textContent = entry.label || entry.id || '未知模型';
-  tr.appendChild(modelCell);
-
-    const msgCell = document.createElement('td');
-    msgCell.className = 'num';
-    msgCell.textContent = formatModelNumber(entry.messages);
-    tr.appendChild(msgCell);
-
-    const shareCell = document.createElement('td');
-    shareCell.className = 'num';
-    const pctLabel = Math.round((Number(entry.share) || 0) * 1000) / 10;
-    shareCell.textContent = `${pctLabel.toFixed(1)}%`;
-    tr.appendChild(shareCell);
-
-    tbody.appendChild(tr);
-  });
-
-  table.appendChild(tbody);
-  modelsChartHost.appendChild(table);
-
-  const meta = document.createElement('div');
-  meta.className = 'models-meta';
-  meta.textContent = `窗口：${resolveWindowLabel(modelsState.window)}（仅助手） · 总计 ${formatModelNumber(total)} 条消息`;
-  modelsChartHost.appendChild(meta);
-}
-
-function recomputeModelShareView() {
-  const messages = Array.isArray(modelsState.messages) ? modelsState.messages : [];
-  const windowValue = modelsState.window;
-  
-  let filtered = messages;
-  
-  // 如果选择了具体年份，只统计该年份的消息
-  if (windowValue !== 'all') {
-    const year = Number(windowValue);
-    if (!isNaN(year)) {
-      const yearStart = Date.UTC(year, 0, 1, 0, 0, 0, 0);
-      const yearEnd = Date.UTC(year, 11, 31, 23, 59, 59, 999);
-      filtered = messages.filter(msg => {
-        const ts = typeof msg?.ts === 'number' ? msg.ts : null;
-        return ts != null && ts >= yearStart && ts <= yearEnd;
+      const thead = document.createElement('thead');
+      const headRow = document.createElement('tr');
+      ['MODEL', 'COUNT', 'SHARE'].forEach((label, idx) => {
+        const th = document.createElement('th');
+        th.textContent = label;
+        if (idx > 0) th.className = 'num';
+        headRow.appendChild(th);
       });
+      thead.appendChild(headRow);
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+      let needsDivider = true;
+      let dataRowIndex = 0; 
+      
+      rows.forEach((entry) => {
+        if (needsDivider && (entry.label === 'Tools' || entry.label === 'Unknown')) {
+          const dividerRow = document.createElement('tr');
+          dividerRow.style.background = 'transparent'; 
+          const dividerCell = document.createElement('td');
+          dividerCell.colSpan = 3;
+          dividerCell.style.cssText = 'padding:0; height:1px; background:#000;';
+          dividerRow.appendChild(dividerCell);
+          tbody.appendChild(dividerRow);
+          needsDivider = false;
+        }
+        
+        const tr = document.createElement('tr');
+        if (dataRowIndex % 2 !== 0) {
+          tr.style.background = 'rgba(0,0,0,.05)'; 
+        }
+        dataRowIndex++;
+
+        const modelCell = document.createElement('td');
+        modelCell.textContent = entry.label || entry.id || 'UNKNOWN';
+        tr.appendChild(modelCell);
+
+        const msgCell = document.createElement('td');
+        msgCell.className = 'num';
+        msgCell.textContent = formatModelNumber(entry.messages);
+        tr.appendChild(msgCell);
+
+        const shareCell = document.createElement('td');
+        shareCell.className = 'num';
+        const pctLabel = Math.round((Number(entry.share) || 0) * 1000) / 10;
+        shareCell.textContent = `${pctLabel.toFixed(1)}%`;
+        tr.appendChild(shareCell);
+
+        tbody.appendChild(tr);
+      });
+
+      table.appendChild(tbody);
+      modelsChartHost.appendChild(table);
+
+      const meta = document.createElement('div');
+      meta.className = 'models-meta';
+      meta.textContent = `WINDOW: ${resolveWindowLabel(modelsState.window)} (ASSISTANT ONLY) · TOTAL: ${formatModelNumber(total)}`;
+      modelsChartHost.appendChild(meta);
     }
-  }
-  
-  // 重新计算模型占比
-  resetModelAgg();
-  filtered.filter(msg => msg?.role === 'assistant').forEach(msg => {
-    bumpModelBucket(msg?.ts, msg?.role, msg);
-  });
-  
-  modelsState.share = getModelShare({ window: windowValue, now: Date.now(), cutoff: 0 });
-  renderModelShare();
-}
+
+    function recomputeModelShareView() {
+      const messages = Array.isArray(modelsState.messages) ? modelsState.messages : [];
+      const windowValue = modelsState.window;
+      
+      let filtered = messages;
+      
+      if (windowValue !== 'all') {
+        const year = Number(windowValue);
+        if (!isNaN(year)) {
+          const yearStart = Date.UTC(year, 0, 1, 0, 0, 0, 0);
+          const yearEnd = Date.UTC(year, 11, 31, 23, 59, 59, 999);
+          filtered = messages.filter(msg => {
+            const ts = typeof msg?.ts === 'number' ? msg.ts : null;
+            return ts != null && ts >= yearStart && ts <= yearEnd;
+          });
+        }
+      }
+      
+      resetModelAgg();
+      filtered.filter(msg => msg?.role === 'assistant').forEach(msg => {
+        bumpModelBucket(msg?.ts, msg?.role, msg);
+      });
+      
+      modelsState.share = getModelShare({ window: windowValue, now: Date.now(), cutoff: 0 });
+      renderModelShare();
+    }
 
     async function computeModelUsageShare() {
       if (!modelsChartHost) return;
@@ -1176,7 +1316,7 @@ function recomputeModelShareView() {
         shards = await listShards();
       } catch (err) {
         modelsState.loading = false;
-        modelsState.error = '读取分片失败，无法计算模型占比';
+        modelsState.error = 'DB_ERROR';
         console.error('Failed to list shards for model share', err);
         renderModelShare();
         return;
@@ -1221,7 +1361,7 @@ function recomputeModelShareView() {
       if(!Array.isArray(words) || !words.length){
         const placeholder=document.createElement('span');
         placeholder.className='muted';
-        placeholder.textContent='暂无统计';
+        placeholder.textContent='NO DATA';
         host.appendChild(placeholder);
         return;
       }
@@ -1242,7 +1382,6 @@ function recomputeModelShareView() {
         host.appendChild(el);
       });
     }
-    // renderCloud([{text:'Syzygy',score:1},{text:'听话',score:.85},{text:'现在',score:.7},{text:'抱紧',score:.6}]);
 
     function updateTopViews(limit = 10) {
       const sorted = Array.isArray(statsState.sortedCandidates) ? statsState.sortedCandidates : [];
@@ -1296,76 +1435,76 @@ function recomputeModelShareView() {
     }
 
     // —— 保存为图片（防截断版） —— //
-document.getElementById('btn-save').addEventListener('click', async ()=>{
-  if(!window.html2canvas){ alert('无法使用内置导出，请手动截图'); return; }
+    document.getElementById('btn-save').addEventListener('click', async ()=>{
+      if(!window.html2canvas){ alert('ERROR: HTML2CANVAS_MISSING'); return; }
 
-  const root=document.documentElement, body=document.body;
+      const root=document.documentElement, body=document.body;
 
-// 创建临时导出容器
-const exportContainer = document.createElement('div');
-exportContainer.style.cssText = 'padding:24px; background:'+getComputedStyle(document.body).backgroundColor;
+      // 创建临时导出容器
+      const exportContainer = document.createElement('div');
+      exportContainer.style.cssText = 'padding:24px; background:'+getComputedStyle(document.body).backgroundColor;
 
-// 克隆标题
-const titleClone = document.createElement('div');
-titleClone.innerHTML = `
-  <h1 style="font-size:28px;font-weight:700;margin:0 0 8px;color:var(--text)">
-    Echo：<span>${document.getElementById('title-name').textContent}</span>
-  </h1>
-  <p style="opacity:.65;font-size:14px;margin:0 0 24px;color:var(--text)">
-    Analyze assistant messages (word cloud: last 90 days; model share: last 12 months, assistant only). Yearly overview aggregates both assistant and user.
-  </p>
-`;
+      // 克隆标题
+      const titleClone = document.createElement('div');
+      titleClone.innerHTML = `
+        <h1 style="font-size:24px;font-weight:700;margin:0 0 8px;color:var(--text);font-family:var(--font-mono)">
+          ECHO_LOG: <span>${document.getElementById('title-name').textContent}</span>
+        </h1>
+        <p style="opacity:.65;font-size:14px;margin:0 0 24px;color:var(--text);font-family:var(--font-mono)">
+          > EXPORT_TIMESTAMP: ${new Date().toISOString()}_
+        </p>
+      `;
 
-// 克隆结果区
-const resultsClone = document.getElementById('results').cloneNode(true);
+      // 克隆结果区
+      const resultsClone = document.getElementById('results').cloneNode(true);
 
-exportContainer.appendChild(titleClone);
-exportContainer.appendChild(resultsClone);
-document.body.appendChild(exportContainer);
+      exportContainer.appendChild(titleClone);
+      exportContainer.appendChild(resultsClone);
+      document.body.appendChild(exportContainer);
 
-const target = exportContainer;
-  const BG = getComputedStyle(body).backgroundColor;
-  const SCALE = 2;        // 导出清晰度倍率
-  const MARGIN = 40;      // 四周留白（px，按需改 24/40 等）
+      const target = exportContainer;
+      const BG = getComputedStyle(body).backgroundColor;
+      const SCALE = 2;       
+      const MARGIN = 40;     
 
-  root.classList.add('printing');
-  try{ if(document.fonts && document.fonts.ready){ await document.fonts.ready; } await new Promise(r=>setTimeout(r,50)); }catch(_){}
+      root.classList.add('printing');
+      try{ if(document.fonts && document.fonts.ready){ await document.fonts.ready; } await new Promise(r=>setTimeout(r,50)); }catch(_){}
 
-  const w=Math.ceil(Math.max(target.scrollWidth, target.clientWidth));
-  const h=Math.ceil(Math.max(target.scrollHeight, target.clientHeight));
+      const w=Math.ceil(Math.max(target.scrollWidth, target.clientWidth));
+      const h=Math.ceil(Math.max(target.scrollHeight, target.clientHeight));
 
-  const canvas = await html2canvas(target,{
-    scale:SCALE, useCORS:true, backgroundColor:BG,
-    x:0, y:0, width:w, height:h,
-    windowWidth:Math.max(w, window.innerWidth),
-    windowHeight:h, scrollX:0, scrollY:-window.scrollY,
-    onclone:(doc)=>doc.documentElement.classList.add('printing')
-  });
+      const canvas = await html2canvas(target,{
+        scale:SCALE, useCORS:true, backgroundColor:BG,
+        x:0, y:0, width:w, height:h,
+        windowWidth:Math.max(w, window.innerWidth),
+        windowHeight:h, scrollX:0, scrollY:-window.scrollY,
+        onclone:(doc)=>doc.documentElement.classList.add('printing')
+      });
 
-  // —— 关键：在原图外再包一层留白画布 —— //
-  const pad = Math.round(MARGIN * SCALE);
-  const framed = document.createElement('canvas');
-  framed.width  = canvas.width  + pad*2;
-  framed.height = canvas.height + pad*2;
+      // —— 关键：在原图外再包一层留白画布 —— //
+      const pad = Math.round(MARGIN * SCALE);
+      const framed = document.createElement('canvas');
+      framed.width  = canvas.width  + pad*2;
+      framed.height = canvas.height + pad*2;
 
-  const ctx = framed.getContext('2d');
-  ctx.fillStyle = BG;             // 与页面一致的背景色
-  ctx.fillRect(0,0,framed.width,framed.height);
-  ctx.drawImage(canvas, pad, pad); // 原图居中放入
+      const ctx = framed.getContext('2d');
+      ctx.fillStyle = BG;             
+      ctx.fillRect(0,0,framed.width,framed.height);
+      ctx.drawImage(canvas, pad, pad); 
 
-try {
-  const safeName = document.getElementById('title-name').textContent.replace(/[\/\\:*?"<>|]/g, '-');
-  const a = document.createElement('a');
-  a.href = framed.toDataURL('image/png');
-  a.download = `Echo-${safeName}.png`;
-  a.click();
-} catch(e) {
-  alert('图片太大，导出失败。建议手动截图。');
-}
+      try {
+        const safeName = document.getElementById('title-name').textContent.replace(/[\/\\:*?"<>|]/g, '-');
+        const a = document.createElement('a');
+        a.href = framed.toDataURL('image/png');
+        a.download = `ECHO_${safeName}_DUMP.png`;
+        a.click();
+      } catch(e) {
+        alert('ERROR: IMAGE_TOO_LARGE');
+      }
 
-root.classList.remove('printing');
-  document.body.removeChild(exportContainer);
-});
+      root.classList.remove('printing');
+      document.body.removeChild(exportContainer);
+    });
 
     // —— 脱敏状态（统计时读取） —— //
     maskInput.addEventListener('change', (e)=> {
@@ -1376,7 +1515,7 @@ root.classList.remove('printing');
 
     // —— 范围切换占位 —— //
     document.querySelectorAll('input[name="scope"]').forEach(r=>{
-      r.addEventListener('change', ()=>{ /* TODO: 切换使用 globalMinTs / assistantMinTs 等聚合引用 */ });
+      r.addEventListener('change', ()=>{ });
     });
   </script>
 </body>
