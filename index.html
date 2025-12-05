@@ -459,7 +459,7 @@
           <select id="window" style="width:auto; padding:4px 8px;">
             <option value="all">全部时间</option>
           </select>
-          <span class="muted small" style="margin-left:auto;">* 仅统计助手回复</span>
+          <span class="muted small" style="margin-left:auto;">* 仅统计GPT回复</span>
         </div>
         <div id="models-chart" class="table-scroll">
           <span class="muted small" style="display:block; text-align:center; padding:20px;">等待计算...</span>
@@ -1079,31 +1079,31 @@
           
           <div class="ticket-grid">
             <div class="ticket-cell">
-              <span class="t-label">MESSAGES</span>
+              <span class="t-label">消息总条数</span>
               <span class="t-value">${num(totalMsg)}</span>
               <span class="t-sub">GPT: ${num(gptMsg)}</span>
             </div>
             
             <div class="ticket-cell">
-              <span class="t-label">CHARACTERS</span>
+              <span class="t-label">总字数</span>
               <span class="t-value">${num(totalChar)}</span>
               <span class="t-sub">GPT: ${num(gptChar)}</span>
             </div>
             
             <div class="ticket-cell">
-              <span class="t-label">DAILY AVG</span>
+              <span class="t-label">日均字数</span>
               <span class="t-value">${avg(avgDaily)}</span>
               <span class="t-sub">CHARS / DAY</span>
             </div>
             
             <div class="ticket-cell">
-              <span class="t-label">GPT LENGTH</span>
+              <span class="t-label">GPT平均字数</span>
               <span class="t-value">${avg(gptAvgLen)}</span>
               <span class="t-sub">CHARS / MSG</span>
             </div>
 
             <div class="ticket-cell">
-              <span class="t-label">IMAGES</span>
+              <span class="t-label">图片数</span>
               <span class="t-value">${num(images)}</span>
             </div>
              
@@ -1114,10 +1114,10 @@
           </div>
 
           <div class="ticket-footer">
-            <div class="streak-icon">S</div>
+            <div class="streak-icon">❤</div>
             <div style="flex:1">
                <div style="font-weight:600; font-family:var(--font-ui);">LONGEST STREAK (最长连续活跃)</div>
-               <div class="muted small">你曾在这一年连续 ${num(streakStats.longestStreak)} 天与他对话</div>
+               <div class="muted small">你曾在这一年连续 ${num(streakStats.longestStreak)} 天与GPT对话</div>
             </div>
             <div class="t-value" style="font-size:24px;">${num(streakStats.longestStreak)}</div>
           </div>
