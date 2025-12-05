@@ -17,16 +17,16 @@ export const FIXED_STOPWORDS = new Set([
   '刚刚','刚才','后来','之前','之后','后来','以后',
   '其实','老实说','说实话',
   '这里','那边','那里','这边',
-  '每次','有时候','有时','经常','常常'
+  '每次','有时候','有时','经常','常常',
   '觉得','感觉','认为',
   '需要','可能会','应该','好像',
   '知道','明白','理解',
   '一下下','稍稍','有点儿',
-  '反复','不断','一直'
+  '反复','不断','一直',
   // English common
   'the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'with', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
   'that', 'this', 'it', 'as', 'at', 'by', 'from','now','what','which','when','why','how',
-  'just','really','quite','maybe','perhaps'
+  'just','really','quite','maybe','perhaps',
   'very','so','too','also','then','well',
   'kind','sort','kinda','sorta',
   'ever','never','always','often','sometimes',
