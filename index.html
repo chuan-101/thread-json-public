@@ -933,103 +933,69 @@
         .filter(([year]) => !Number.isNaN(year))
         .sort((a, b) => b[0] - a[0]);
 
-      const numberFormatter = (typeof Intl !== 'undefined' && Intl.NumberFormat)
-        ? new Intl.NumberFormat()
-        : null;
-      const averageFormatter = (typeof Intl !== 'undefined' && Intl.NumberFormat)
-        ? new Intl.NumberFormat(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
-        : null;
-      const zeroAverage = averageFormatter ? averageFormatter.format(0) : '0.0';
-      const formatNumber = (value) => {
-        if (!Number.isFinite(value)) return '0';
-        if (value === 0) return '0';
-        return numberFormatter ? numberFormatter.format(value) : String(value);
-      };
-      const formatAverage = (value) => {
-        if (!Number.isFinite(value)) return zeroAverage;
-        return averageFormatter ? averageFormatter.format(value) : value.toFixed(1);
-      };
+      // 格式化工具
+      const numberFormatter = new Intl.NumberFormat('en-US');
+      const formatNumber = (val) => Number.isFinite(val) ? numberFormatter.format(val) : '0';
+      const formatAverage = (val) => Number.isFinite(val) ? val.toFixed(1) : '0.0';
 
       const columnLabels = {
         year: '年份',
         messages: '消息总数',
         chars: '总字数',
-        images: '图片数',
+        images: '图片',
         avgPerDay: '日均',
         topMonth: '最活跃',
         avgAssistant: 'GPT均长',
-        streaks: '连续活跃',
+        streaks: '活跃统计',
       };
 
+      // 辅助函数：计算活跃天数
       const resolveActiveDays = (days) => {
         if (!days) return 0;
         if (days instanceof Set) return days.size;
         if (Array.isArray(days)) return days.length;
-        const num = Number(days);
-        return Number.isFinite(num) && num > 0 ? num : 0;
+        return Number(days) || 0;
       };
 
-      const toOrdinal = (value) => {
-        if (typeof value === 'string') {
-          const parts = value.split('-');
-          if (parts.length === 3) {
-            const [y, m, d] = parts.map((part) => Number(part));
-            if ([y, m, d].every((n) => Number.isInteger(n))) {
-              return Date.UTC(y, m - 1, d);
-            }
-          }
+      // 辅助函数：计算连续活跃
+      const toOrdinal = (val) => {
+        // ...保持原有的日期转换逻辑...
+        if (typeof val === 'string') {
+          const parts = val.split('-');
+          if (parts.length === 3) return Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
         }
-        const num = Number(value);
-        if (Number.isFinite(num)) {
-          const date = new Date(num);
-          if (!Number.isNaN(date.getTime())) {
-            return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
-          }
-        }
-        return null;
+        const num = Number(val);
+        return (Number.isFinite(num) && !Number.isNaN(new Date(num).getTime())) 
+          ? Date.UTC(new Date(num).getUTCFullYear(), new Date(num).getUTCMonth(), new Date(num).getUTCDate()) 
+          : null;
       };
 
       const computeStreakStats = (days) => {
         const source = days instanceof Set ? Array.from(days) : Array.isArray(days) ? days : [];
         if (!source.length) return { streakCount: 0, longestStreak: 0 };
-        const ordinals = source
-          .map((value) => toOrdinal(value))
-          .filter((value) => Number.isFinite(value))
-          .sort((a, b) => a - b);
+        const ordinals = source.map(toOrdinal).filter(Number.isFinite).sort((a, b) => a - b);
         if (!ordinals.length) return { streakCount: 0, longestStreak: 0 };
-        const DAY_MS = 24 * 60 * 60 * 1000;
-        let streakCount = 0;
-        let longest = 0;
-        let current = 0;
-        let previous = null;
-        ordinals.forEach((ordinal) => {
-          if (previous === null || ordinal - previous > DAY_MS) {
-            streakCount += 1;
-            current = 1;
-          } else if (ordinal - previous === DAY_MS) {
-            current += 1;
-          } else {
-            current = Math.max(1, current);
+        
+        const DAY_MS = 86400000;
+        let streak = 0, longest = 0, current = 0, prev = null;
+        
+        ordinals.forEach((ts) => {
+          if (prev === null || ts - prev > DAY_MS) {
+            streak++; current = 1;
+          } else if (ts - prev === DAY_MS) {
+            current++;
           }
-          if (current > longest) {
-            longest = current;
-          }
-          previous = ordinal;
+          if (current > longest) longest = current;
+          prev = ts;
         });
-        if (longest === 0) longest = 1;
-        return { streakCount, longestStreak: longest };
+        
+        // 计算当前是否还在连续（判断最后一天是否是今天或昨天）
+        // 这里简化处理，直接返回计算出的 current 作为最后一段连续
+        return { streakCount: streak, longestStreak: longest || 1, currentStreak: current };
       };
 
       if (!entries.length) {
-        const row = document.createElement('tr');
-        const cell = document.createElement('td');
-        cell.colSpan = 8;
-        cell.className = 'muted';
-        cell.style.textAlign = 'center';
-        cell.style.padding = '30px';
-        cell.textContent = '等待解析数据...';
-        row.appendChild(cell);
-        tbody.appendChild(row);
+        tbody.innerHTML = '<tr><td colspan="8" class="muted" style="text-align:center; padding:30px;">等待数据导入...</td></tr>';
         updateYearlyTableResponsive();
         return;
       }
@@ -1040,127 +1006,100 @@
       entries.forEach(([year, value]) => {
         const entry = value || {};
         const metrics = (derived && derived[year]) || {};
-        const totalMessages = Number.isFinite(metrics.totalMessages)
-          ? metrics.totalMessages
-          : Number(entry.totalMessages) || 0;
-        const assistantMsgs = Number.isFinite(metrics.assistantMsgs)
-          ? metrics.assistantMsgs
-          : Number(entry.assistantMsgs) || 0;
-        const totalChars = Number.isFinite(metrics.totalChars)
-          ? metrics.totalChars
-          : Number(entry.totalChars) || 0;
-        const assistantChars = Number.isFinite(metrics.assistantChars)
-          ? metrics.assistantChars
-          : Number(entry.assistantChars) || 0;
-        const images = Number.isFinite(metrics.images)
-          ? metrics.images
-          : Number(entry.images) || 0;
-        const avgCharsPerActiveDay = Number.isFinite(metrics.avgCharsPerActiveDay)
-          ? metrics.avgCharsPerActiveDay
-          : 0;
-        const mostActiveMonth = Number.isFinite(metrics.mostActiveMonth)
-          ? metrics.mostActiveMonth
-          : 0;
-        const avgAssistantMsgLen = Number.isFinite(metrics.avgAssistantMsgLen)
-          ? metrics.avgAssistantMsgLen
-          : 0;
-        const row = document.createElement('tr');
-
+        
+        // 数据提取
+        const totalMessages = metrics.totalMessages ?? entry.totalMessages ?? 0;
+        const assistantMsgs = metrics.assistantMsgs ?? entry.assistantMsgs ?? 0;
+        const totalChars = metrics.totalChars ?? entry.totalChars ?? 0;
+        const assistantChars = metrics.assistantChars ?? entry.assistantChars ?? 0;
+        const images = metrics.images ?? entry.images ?? 0;
+        const avgCharsPerActiveDay = metrics.avgCharsPerActiveDay ?? 0;
+        const mostActiveMonth = metrics.mostActiveMonth ?? 0;
+        const avgAssistantMsgLen = metrics.avgAssistantMsgLen ?? 0;
+        
         const activeDaysSource = metrics.activeDays || entry.activeDays;
         const activeDayCount = resolveActiveDays(activeDaysSource);
+        const streakStats = computeStreakStats(activeDaysSource);
 
+        const row = document.createElement('tr');
+
+        // 1. 年份 (Year) - 纯净版
         const yearCell = document.createElement('td');
         yearCell.setAttribute('data-label', columnLabels.year);
-        const yearMain = document.createElement('div');
-        yearMain.style.fontWeight = '700';
-        yearMain.textContent = String(year);
-        yearCell.appendChild(yearMain);
-        if (activeDayCount > 0) {
-          const sub = document.createElement('div');
-          sub.className = 'small muted';
-          sub.textContent = `活跃 ${formatNumber(activeDayCount)} 天`;
-          yearCell.appendChild(sub);
-        }
+        yearCell.innerHTML = `<div style="font-family:'Cinzel',serif; font-weight:700; font-size:16px;">${year}</div>`;
         row.appendChild(yearCell);
 
+        // 2. 消息数 (Messages)
         const msgsCell = document.createElement('td');
         msgsCell.className = 'num';
         msgsCell.setAttribute('data-label', columnLabels.messages);
-        msgsCell.textContent = formatNumber(totalMessages);
-        if (Number.isFinite(assistantMsgs) && assistantMsgs > 0) {
-          const sub = document.createElement('div');
-          sub.className = 'small muted';
-          sub.textContent = `GPT: ${formatNumber(assistantMsgs)}`;
-          msgsCell.appendChild(sub);
-        }
+        msgsCell.innerHTML = `
+          <div>${formatNumber(totalMessages)}</div>
+          <div class="small muted" style="margin-top:2px;">GPT: ${formatNumber(assistantMsgs)}</div>
+        `;
         row.appendChild(msgsCell);
 
+        // 3. 总字数 (Chars)
         const charsCell = document.createElement('td');
         charsCell.className = 'num';
         charsCell.setAttribute('data-label', columnLabels.chars);
-        charsCell.textContent = formatNumber(totalChars);
-        if (Number.isFinite(assistantChars) && assistantChars > 0) {
-          const sub = document.createElement('div');
-          sub.className = 'small muted';
-          sub.textContent = `GPT: ${formatNumber(assistantChars)}`;
-          charsCell.appendChild(sub);
-        }
+        charsCell.innerHTML = `
+          <div>${formatNumber(totalChars)}</div>
+          <div class="small muted" style="margin-top:2px;">GPT: ${formatNumber(assistantChars)}</div>
+        `;
         row.appendChild(charsCell);
 
+        // 4. 图片 (Images)
         const imagesCell = document.createElement('td');
         imagesCell.className = 'num';
         imagesCell.setAttribute('data-label', columnLabels.images);
         imagesCell.textContent = formatNumber(images);
         row.appendChild(imagesCell);
 
+        // 5. 日均 (Avg)
         const avgCell = document.createElement('td');
         avgCell.className = 'num';
         avgCell.setAttribute('data-label', columnLabels.avgPerDay);
         avgCell.textContent = formatAverage(avgCharsPerActiveDay);
         row.appendChild(avgCell);
 
-        const charsByMonth = Array.isArray(metrics.charsByMonth) ? metrics.charsByMonth : Array.isArray(entry.charsByMonth) ? entry.charsByMonth : [];
+        // 6. 最活跃月 (Top Month) - 优化显示
         const topMonthCell = document.createElement('td');
         topMonthCell.className = 'num';
         topMonthCell.setAttribute('data-label', columnLabels.topMonth);
-        if (Number.isInteger(mostActiveMonth) && mostActiveMonth > 0) {
-          const idx = Math.min(mostActiveMonth - 1, monthLabels.length - 1);
-          const monthLabel = monthLabels[idx] || `${mostActiveMonth}月`;
-          const charsForMonth = Number(charsByMonth[idx]);
-          const main = document.createElement('div');
-          main.textContent = monthLabel;
-          topMonthCell.appendChild(main);
-          if (Number.isFinite(charsForMonth) && charsForMonth > 0) {
-            const sub = document.createElement('div');
-            sub.className = 'small muted';
-            sub.textContent = formatNumber(charsForMonth);
-            topMonthCell.appendChild(sub);
-          }
+        if (mostActiveMonth > 0) {
+          const charsForMonth = (metrics.charsByMonth || [])[mostActiveMonth - 1] || 0;
+          topMonthCell.innerHTML = `
+            <div style="font-weight:600;">${monthLabels[mostActiveMonth - 1]}</div>
+            <div class="small muted" style="margin-top:2px;">
+              <span style="opacity:0.6; font-size:10px;">共</span> ${formatNumber(charsForMonth)} <span style="opacity:0.6; font-size:10px;">字</span>
+            </div>
+          `;
         } else {
           topMonthCell.textContent = '—';
         }
         row.appendChild(topMonthCell);
 
+        // 7. GPT均长
         const assistantAvgCell = document.createElement('td');
         assistantAvgCell.className = 'num';
         assistantAvgCell.setAttribute('data-label', columnLabels.avgAssistant);
         assistantAvgCell.textContent = formatAverage(avgAssistantMsgLen);
         row.appendChild(assistantAvgCell);
 
+        // 8. 活跃统计 (Streaks) - 彻底重构
         const streakCell = document.createElement('td');
-        streakCell.className = 'streak num';
+        streakCell.className = 'num'; // 保持右对齐
         streakCell.setAttribute('data-label', columnLabels.streaks);
-        const streakStats = computeStreakStats(activeDaysSource);
-        const streakMain = document.createElement('div');
-        const streakCountText = formatNumber(streakStats.streakCount || 0);
-        const longestText = formatNumber(streakStats.longestStreak || 0);
-        streakMain.textContent = `${streakCountText} / ${longestText}`;
-        streakCell.appendChild(streakMain);
+        
+        // 这里的逻辑是：如果本年度活跃天数 > 0，则显示详情
         if (activeDayCount > 0) {
-          const sub = document.createElement('div');
-          sub.className = 'small muted';
-          sub.textContent = `活跃天数 ${formatNumber(activeDayCount)}`;
-          streakCell.appendChild(sub);
+           streakCell.innerHTML = `
+             <div style="margin-bottom:2px;">总活跃: <strong>${formatNumber(activeDayCount)}</strong> 天</div>
+             <div class="small muted">最长连续: ${formatNumber(streakStats.longestStreak)} 天</div>
+           `;
+        } else {
+           streakCell.innerHTML = `<span class="muted">—</span>`;
         }
         row.appendChild(streakCell);
 
