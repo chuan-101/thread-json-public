@@ -23,6 +23,7 @@ export const FIXED_STOPWORDS = new Set([
   '知道','明白','理解',
   '一下下','稍稍','有点儿',
   '反复','不断','一直',
+  '一个','一些','一次',
   // English common
   'the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'with', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
   'that', 'this', 'it', 'as', 'at', 'by', 'from','now','what','which','when','why','how',
