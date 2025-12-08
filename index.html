@@ -527,6 +527,20 @@
         </div>
       </section>
 
+      <section class="card stack" id="card-models">
+        <div class="section-title">03 / MODEL USAGE (模型偏好)</div>
+        <div class="row small" style="align-items:center; gap:8px; margin-bottom:12px;">
+          <label class="muted" for="window">统计范围：</label>
+          <select id="window" style="width:auto; padding:4px 8px;">
+            <option value="all">全部时间</option>
+          </select>
+          <span class="muted small" style="margin-left:auto;">* 仅统计GPT回复</span>
+        </div>
+        <div id="models-chart" class="table-scroll">
+          <span class="muted small" style="display:block; text-align:center; padding:20px;">等待计算...</span>
+        </div>
+      </section>
+
       <section class="card stack" id="card-cloud">
         <div class="row" style="justify-content:space-between;">
             <div class="section-title" style="margin-bottom:0; border-bottom:none;">02 / TOP 10 KEYWORDS (记忆碎片)</div>
@@ -540,20 +554,6 @@
             <div class="cloud" id="cloud">
             <span class="muted small">暂无数据</span>
             </div>
-        </div>
-      </section>
-
-      <section class="card stack" id="card-models">
-        <div class="section-title">03 / MODEL USAGE (模型偏好)</div>
-        <div class="row small" style="align-items:center; gap:8px; margin-bottom:12px;">
-          <label class="muted" for="window">统计范围：</label>
-          <select id="window" style="width:auto; padding:4px 8px;">
-            <option value="all">全部时间</option>
-          </select>
-          <span class="muted small" style="margin-left:auto;">* 仅统计GPT回复</span>
-        </div>
-        <div id="models-chart" class="table-scroll">
-          <span class="muted small" style="display:block; text-align:center; padding:20px;">等待计算...</span>
         </div>
       </section>
     </main>
