@@ -68,6 +68,8 @@ function resolveCjkStopwordRegex() {
     cjkStopwordRegex = null;
     return cjkStopwordRegex;
   }
+  
+    cjkStopwords.sort((a, b) => b.length - a.length); 
 
   const escaped = cjkStopwords.map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   cjkStopwordRegex = new RegExp(escaped.join('|'), 'gu');
