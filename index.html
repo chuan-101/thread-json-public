@@ -1128,6 +1128,13 @@
         return { streakCount: streak, longestStreak: longest || 1, currentStreak: current };
       };
 
+      const formatHourRange = (hour) => {
+        const start = Number(hour) % 24;
+        const end = (start + 1) % 24;
+        const pad = (v) => `${v}`.padStart(2, '0');
+        return `${pad(start)}:00 - ${pad(end)}:00`;
+      };
+
       // 3. 开始渲染小票
       // 注意：这里需要依赖外部的 computeYearlyMetrics，这是原本就在外部导入的，所以没问题
       const derived = computeYearlyMetrics(summary);
@@ -1145,11 +1152,11 @@
         const images = metrics.images ?? entry.images ?? 0;
         const avgDaily = metrics.avgCharsPerActiveDay ?? 0;
         const gptAvgLen = metrics.avgAssistantMsgLen ?? 0;
-        
+
         const activeDaysSource = metrics.activeDays || entry.activeDays;
         const activeCount = resolveActiveDays(activeDaysSource);
         const streakStats = computeStreakStats(activeDaysSource);
-        
+
         // 处理最活跃月
         const mostActiveMonth = metrics.mostActiveMonth ?? 0;
         let topMonthHtml = '<span class="muted">—</span>';
@@ -1158,6 +1165,13 @@
              const mCount = (metrics.charsByMonth || [])[mostActiveMonth - 1] || 0;
              topMonthHtml = `${mName} <span style="opacity:0.5; font-size:12px;">(${num(mCount)})</span>`;
         }
+
+        const peakHour = Number.isFinite(metrics.peakHour) ? metrics.peakHour : 0;
+        const hourBuckets = Array.isArray(metrics.hourBuckets) ? metrics.hourBuckets : [];
+        const hasHourlyMessages = hourBuckets.some((count) => Number(count) > 0);
+        const peakHourHtml = hasHourlyMessages && peakHour >= 0 && peakHour < 24
+          ? formatHourRange(peakHour)
+          : '<span class="muted">—</span>';
 
         // 构建 HTML 结构
         const ticket = document.createElement('div');
@@ -1197,7 +1211,12 @@
               <span class="t-label">图片数</span>
               <span class="t-value">${num(images)}</span>
             </div>
-             
+
+            <div class="ticket-cell">
+              <span class="t-label">最活跃时段</span>
+              <span class="t-value">${peakHourHtml}</span>
+            </div>
+
              <div class="ticket-cell" style="grid-column: span 3;">
               <span class="t-label">PEAK MONTH (最活跃)</span>
               <span class="t-value">${topMonthHtml}</span>
