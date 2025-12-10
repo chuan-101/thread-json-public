@@ -9,6 +9,7 @@ function ensureYearEntry(year) {
       assistantChars: 0,
       assistantMsgs: 0,
       charsByMonth: Array.from({ length: 12 }, () => 0),
+      hourBuckets: Array.from({ length: 24 }, () => 0),
       images: 0,
       activeDays: new Set(),
     };
@@ -47,6 +48,11 @@ export function bumpYearAgg(ts, role, contentLen, imagesInMsg = 0) {
   const entry = ensureYearEntry(year);
   entry.totalMessages += 1;
 
+  if (Number.isFinite(timestamp) && timestamp > 0) {
+    const hour = new Date(timestamp).getHours();
+    entry.hourBuckets[hour] += 1;
+  }
+
   const length = Number.isFinite(contentLen) ? contentLen : 0;
   entry.totalChars += length;
   
@@ -79,6 +85,7 @@ export function finalizeYearAgg() {
       assistantChars: entry.assistantChars,
       assistantMsgs: entry.assistantMsgs,
       charsByMonth: entry.charsByMonth.slice(),
+      hourBuckets: entry.hourBuckets.slice(),
       images: entry.images,
       activeDays: new Set(entry.activeDays),
     };
@@ -108,6 +115,14 @@ function normalizeCharsByMonth(raw) {
   });
 }
 
+function normalizeHourBuckets(raw) {
+  const hours = Array.isArray(raw) ? raw : [];
+  return Array.from({ length: 24 }, (_, idx) => {
+    const value = Number(hours[idx]);
+    return Number.isFinite(value) ? value : 0;
+  });
+}
+
 export function computeYearlyMetrics(yearAgg) {
   const result = {};
   if (!yearAgg) {
@@ -132,6 +147,7 @@ export function computeYearlyMetrics(yearAgg) {
     const activeDayCount = activeDays.size;
 
     const charsByMonth = normalizeCharsByMonth(rawEntry.charsByMonth);
+    const hourBuckets = normalizeHourBuckets(rawEntry.hourBuckets);
     let mostActiveMonthIndex = -1;
     let mostChars = -Infinity;
     for (let idx = 0; idx < charsByMonth.length; idx += 1) {
@@ -147,12 +163,19 @@ export function computeYearlyMetrics(yearAgg) {
     const avgAssistantMsgLen =
       assistantMsgs > 0 ? roundToSingleDecimal(assistantChars / assistantMsgs) : 0;
 
+    const peakHour =
+      hourBuckets.length && Math.max(...hourBuckets) > 0
+        ? hourBuckets.indexOf(Math.max(...hourBuckets))
+        : 0;
+
     result[year] = {
       totalMessages,
       totalChars,
       assistantChars,
       assistantMsgs,
       charsByMonth: charsByMonth.slice(),
+      hourBuckets: hourBuckets.slice(),
+      peakHour,
       images,
       activeDays: new Set(activeDays),
       messages: totalMessages,
