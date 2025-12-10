@@ -466,7 +466,7 @@
       <header>
         <div class="row" style="justify-content: space-between; align-items:flex-start;">
             <div>
-                <h1 class="h1">Echo：<span id="title-name">My GPT</span></h1>
+                <h1 class="h1">Thread：<span id="title-name">My GPT</span></h1>
                 <p class="muted">年度数据可视化报告 // A Year By The Numbers</p>
             </div>
             <div style="text-align:right; opacity:0.5; font-size:10px;">
@@ -560,7 +560,7 @@
 
     <footer class="footer">
       <div class="card">
-        <span class="small muted">Echo: My GPT Analysis</span>
+        <span class="small muted">Thread: My GPT Analysis</span>
         <button class="btn" id="btn-save">保存为长图</button>
       </div>
     </footer>
@@ -772,7 +772,7 @@
     titleInput.addEventListener('input', () => {
       const v = (titleInput.value || 'My GPT').trim();
       titleName.textContent = v;
-      document.title = `Echo：${v}`;
+      document.title = `Thread：${v}`;
     });
 
     // —— 进度条占位：接入解析/统计后在此更新 —— //
@@ -1494,7 +1494,7 @@
       const titleClone = document.createElement('div');
       titleClone.innerHTML = `
         <h1 style="font-size:24px;font-weight:700;margin:0 0 8px;color:var(--text);font-family:var(--font-ui)">
-          Echo：<span>${document.getElementById('title-name').textContent}</span>
+          Thread：<span>${document.getElementById('title-name').textContent}</span>
         </h1>
         <p style="opacity:.6;font-size:12px;margin:0 0 32px;color:var(--text);font-family:var(--font-ui); letter-spacing:1px;">
           EXPORT DATE: ${new Date().toLocaleDateString()}
@@ -1542,7 +1542,7 @@
         const safeName = document.getElementById('title-name').textContent.replace(/[\/\\:*?"<>|]/g, '-');
         const a = document.createElement('a');
         a.href = framed.toDataURL('image/png');
-        a.download = `Echo_${safeName}_Report.png`;
+        a.download = `Thread_${safeName}_Report.png`;
         a.click();
       } catch(e) {
         alert('图片太大，导出失败。建议手动截图。');
